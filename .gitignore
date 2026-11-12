@@ -1,0 +1,54 @@
+# Local environment and secrets; keep the configuration templates
+.env
+.env.*
+!.env.example
+
+# Python / uv virtual environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node.js / Vite / TypeScript generated files
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Local runtime data: SQLite, uploads, imports and embedding model cache
+/backend/data/
+/data/
+.cache/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Logs and temporary editor files
+logs/
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS and local IDE metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vs/
+
+# Keep uv.lock, package-lock.json, .python-version, Spec Kit docs and demo
+# manifests/results in Git. Test fixtures belong outside runtime data folders.
