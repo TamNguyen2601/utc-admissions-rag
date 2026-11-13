@@ -8,7 +8,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 
 from app.api.deps import optional_auth, require_admin
 from app.api.routes.admin import DB, Page, PageSize, paginated
-from app.schemas.document import DocumentDetail, DocumentMetadata, PageResponse, ReasonInput, UploadInput
+from app.schemas.document import DocumentDetail, DocumentMetadata, PageResponse, PublicSource, ReasonInput, UploadInput
 from app.services.documents import MAX_UPLOAD, document_query, get_document, metadata, validate_file
 from app.models.knowledge import DataSource
 from app.services.sources import require_usable, validate_source_url
@@ -89,12 +89,9 @@ def delete_document(identity: UUID, request: Request):
     return Response(status_code=204)
 
 
-@router.get("/documents/{identity}/source", dependencies=[Depends(optional_auth)])
-def public_source(identity: UUID, db: DB, page: Annotated[int | None, Query(ge=1)] = None):
-    get_document(db, str(identity))
-    # T028 adds permitted excerpts from real chunks. Never publish private metadata
-    # or stub text through this public endpoint at checkpoint B1.
-    raise HTTPException(410)
+@router.get("/documents/{identity}/source", response_model=PublicSource, dependencies=[Depends(optional_auth)])
+def public_source(identity: UUID, request: Request, page: Annotated[int | None, Query(ge=1)] = None):
+    return request.app.state.retrieval.source(str(identity), page)
 
 
 router.include_router(admin)

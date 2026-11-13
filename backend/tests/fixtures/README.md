@@ -33,3 +33,22 @@ Script tạo ảnh/PDF tiếng Việt GIẢ LẬP bằng font Arial local (đổ
 gọi Tesseract thật qua Extractor và kiểm native, PNG, PDF scan, ảnh trống bị cách ly.
 OCR đạt gate vẫn numeric_eligible=false. Script không nằm trong pytest mặc định;
 `ocr-local.json` là bằng chứng chạy trên máy, không phải kết quả giả lập.
+
+## Fixtures T025–T029 (C)
+
+`tests/knowledge_support.py` cung cấp tokenizer/encoder giả lập xác định được;
+`test_embedding.py`, `test_retrieval.py`, `integration/test_knowledge.py` dùng
+chunking/indexing/publish/SQLite/retrieval/API thật. Suite mặc định không tải E5.
+Hai fixture PDF bảng đã được tái tạo vì bytes cũ lỗi zlib; `.gitattributes` giữ
+PDF/ảnh dạng binary để Git trên Windows không đổi newline trong PDF stream.
+
+Smoke riêng chạy **E5 CPU thật**, tokenizer thật, SQLite tạm và tiếng Việt giả lập:
+
+```powershell
+uv run --locked --offline python tests/smoke/check_knowledge_e5.py --output tests/smoke/knowledge-e5-local.json
+```
+
+Chỉ đọc model cache `backend/data/models` với revision trong config; thiếu cache
+thì thất bại, không tự tải/fallback. Dùng `check_e5.py --download` sẵn có nếu cần
+chuẩn bị cache lần đầu. Không ghi DB/uploads demo, không gọi Gemini/website.
+Artifact ghi model/revision/CPU/profile/latency cùng các kiểm tra lifecycle thực.

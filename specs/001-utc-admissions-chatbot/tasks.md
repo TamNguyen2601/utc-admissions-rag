@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T024 đã triển khai đến checkpoint B2; UTC/extraction/OCR/hash được kiểm bằng fixtures offline và indexer fake. Chưa nghiệm thu embedding/RAG. Dừng sau T024; T025 trở đi chưa triển khai.
-**Bằng chứng**: [Kết quả thực tế T001–T024](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T029 đã triển khai đến checkpoint C; chunks/index/publish/retrieval/source API được kiểm bằng SQLite và fixtures offline, E5 CPU smoke riêng đã PASS. Dừng sau T029; T030 trở đi chưa triển khai, chatbot/demo chưa nghiệm thu.
+**Bằng chứng**: [Kết quả thực tế T001–T029](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -142,27 +142,27 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 5. Local embedding và retrieval — checkpoint C
 
-- [ ] T025 [Database/chunking] [US2] chunks384/BLOB constraints, snapshot/page/context; chunk320 token overlap48, giữ headers, <=512 incl prefix/special.
+- [X] T025 [Database/chunking] [US2] chunks384/BLOB constraints, snapshot/page/context; chunk320 token overlap48, giữ headers, <=512 incl prefix/special.
   - File: `backend/app/models/knowledge.py`, `backend/app/services/chunking.py`.
   - Phụ thuộc: T023, T024; coverage: FR-009 FR-012.
   - Nghiệm thu: Unit boundary/metadata và DB BLOB length1536 pass; không trộn trang/điều kiện làm mất context.
 
-- [ ] T026 [RAG/embedding] [US2] Singleton E5 CPU cùng revision, query:/passage:,L2,<f4; encode lock, profile, không truncate query.
+- [X] T026 [RAG/embedding] [US2] Singleton E5 CPU cùng revision, query:/passage:,L2,<f4; encode lock, profile, không truncate query.
   - File: `backend/app/services/embedding.py`.
   - Phụ thuộc: T003, T025; coverage: FR-012 FR-035.
   - Nghiệm thu: Smoke thật trên CPU + unit spy/prefix/dim/norm/finite/BLOB roundtrip; query vượt budget422.
 
-- [ ] T027 [RAG/publish] [US2] Publish staging transaction ngắn dưới khóa, kiểm doc hiện hành/quyền/enabled; nối cùng pipeline coordinator.
+- [X] T027 [RAG/publish] [US2] Publish staging transaction ngắn dưới khóa, kiểm doc hiện hành/quyền/enabled; nối cùng pipeline coordinator.
   - File: `backend/app/services/documents.py`, `backend/app/services/crawl.py`.
   - Phụ thuộc: T015, T023, T025, T026; coverage: FR-011 FR-012 FR-013 FR-032.
   - Nghiệm thu: Unchanged encode0; update lỗi giữ cũ; disabled cập nhật vẫn false; target bị xóa trong staging error DOCUMENT_REMOVED, lượt mới được nhập lại.
 
-- [ ] T028 [RAG/retrieval/source] [US2] NumPy cosine top5/threshold config, filter profile/context/usable; public excerpts/source410 không private note.
+- [X] T028 [RAG/retrieval/source] [US2] NumPy cosine top5/threshold config, filter profile/context/usable; public excerpts/source410 không private note.
   - File: `backend/app/services/retrieval.py`, `backend/app/api/routes/documents.py`.
   - Phụ thuộc: T027; coverage: FR-004 FR-005 FR-013.
   - Nghiệm thu: Fixture topk đúng, disabled/quarantined/sai context không retrieval; available kiểm hiện hành, không cache stale vector.
 
-- [ ] T029 [Test/RAG data] [US2] Integration ingestion→retrieval/source API, dedup/disable/enable/delete/restart; E5 smoke riêng.
+- [X] T029 [Test/RAG data] [US2] Integration ingestion→retrieval/source API, dedup/disable/enable/delete/restart; E5 smoke riêng.
   - File: `backend/tests/integration/test_knowledge.py`, `backend/tests/unit/test_retrieval.py`.
   - Phụ thuộc: T028; coverage: FR-008 FR-009 FR-010 FR-011 FR-012 FR-013 FR-032 SC-002 SC-003.
   - Nghiệm thu: 1new/1update/1skip/1error; note/context/encode đúng, disabled qua restart không bật; delete thật rồi recrawl tạo mới, DISABLED_DUPLICATE giữ flag và không lỗiunique, OCR số không eligible. Checkpoint C.

@@ -125,6 +125,26 @@ class DocumentDetail(DocumentMetadata):
     content_text: str | None
 
 
+class PublicOrigin(ClosedModel):
+    url: str
+    source_name: str
+
+
+class SourceExcerpt(ClosedModel):
+    chunk_id: UUID
+    page: int | None = Field(ge=1)
+    section: str | None
+    text: str
+
+
+class PublicSource(ClosedModel):
+    id: UUID
+    title: str
+    origins: list[PublicOrigin]
+    excerpts: list[SourceExcerpt]
+    available: Literal[True]
+
+
 class SourceResponse(SourceInput):
     id: UUID
     retry_not_before: datetime | None

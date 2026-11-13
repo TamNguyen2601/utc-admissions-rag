@@ -1,9 +1,4 @@
-"""Document administration and incremental extraction with an injectable index boundary.
-
-Real extraction is injected separately. Indexer contract: profile: dict,
-extract(bytes, media_type) -> text; index(text, metadata) -> None; usable(document)
--> bool. B2 uses fake indexing; T025–T029 supply chunks, embedding and retrieval.
-"""
+"""Incremental ingestion: stage CPU work, atomically publish one current index."""
 from dataclasses import dataclass
 import hashlib
 import json
@@ -12,11 +7,11 @@ import unicodedata
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import exists, or_, select
+from sqlalchemy import delete, exists, or_, select
 
 from app.db.base import utc_now
 from app.models.crawl import CrawlRun, CrawlRunItem
-from app.models.knowledge import DataSource, Document, DocumentOrigin
+from app.models.knowledge import DataSource, Document, DocumentOrigin, DocumentChunk
 from app.services.sources import require_usable, validate_source_url
 from app.services.extraction import ExtractionError
 
@@ -185,13 +180,17 @@ class DocumentService:
                 origin = db.get(DocumentOrigin, origin_id)
                 if origin is None or origin.document_id != document_id:
                     raise HTTPException(404)
-                require_usable(db.get(DataSource, origin.source_id))
+                source = db.get(DataSource, origin.source_id)
+                require_usable(source)
                 if self.indexer is None:
                     current.quality_reason = "INDEXER_NOT_IMPLEMENTED"
                     db.commit()
                     return IngestionOutcome("skipped", document_id, "INDEXER_NOT_IMPLEMENTED")
                 profile = self._profile()
                 staged_metadata = metadata(db, current)
+                baseline = (current.content_hash, current.context_key, current.index_profile)
+                snapshot = dict(origin_id=origin.id, url=origin.canonical_url,
+                                source_name=source.name)
                 target_context = context_key(payload) if payload else current.context_key
                 if payload:
                     staged_metadata.update({key: getattr(payload, key) for key in
@@ -199,7 +198,8 @@ class DocumentService:
                 raw_hash = hashlib.sha256(data).hexdigest()
                 raw_duplicate = db.scalar(select(Document).where(Document.raw_hash == raw_hash,
                     Document.context_key == target_context, Document.state == "ready"))
-                raw_unchanged = raw_duplicate is not None and raw_duplicate.index_profile == profile
+                raw_unchanged = (raw_duplicate is not None and raw_duplicate.index_profile == profile
+                                 and self.indexer.usable(raw_duplicate))
                 if raw_unchanged:
                     text, content_hash = raw_duplicate.content_text, raw_duplicate.content_hash
             if not raw_unchanged:
@@ -215,23 +215,36 @@ class DocumentService:
             with self.database.session() as db:
                 duplicate = db.scalar(select(Document).where(Document.content_hash == content_hash,
                     Document.context_key == target_context))
-                unchanged = duplicate is not None and duplicate.state == "ready" and duplicate.index_profile == profile
+                unchanged = (duplicate is not None and duplicate.state == "ready"
+                             and duplicate.index_profile == profile and self.indexer.usable(duplicate))
                 disabled_conflict = not staged_metadata["enabled"] and duplicate is not None and duplicate.id != document_id and duplicate.enabled
+            staged_chunks = None
             if not unchanged and not disabled_conflict:
-                # B2 boundary only. Real chunks/vectors and their publication belong to T025-T027.
-                self.indexer.index(text, staged_metadata)
+                staged_chunks = self.indexer.index(text, staged_metadata)
             with self.publish_lock, self.database.session() as db:
                 current = db.get(Document, document_id)
                 origin = db.get(DocumentOrigin, origin_id)
                 if current is None or origin is None or origin.document_id != document_id:
                     return IngestionOutcome("error", None, "DOCUMENT_REMOVED")
                 require_usable(db.get(DataSource, origin.source_id))
+                if not origin.active:
+                    raise ValueError('ORIGIN_INACTIVE')
+                if origin.canonical_url.startswith('https:'):
+                    validate_source_url(db.get(DataSource, origin.source_id), origin.canonical_url)
+                if (current.content_hash, current.context_key, current.index_profile) != baseline:
+                    raise ValueError('DOCUMENT_CHANGED')
                 duplicate = db.scalar(select(Document).where(Document.content_hash == content_hash,
                     Document.context_key == target_context))
                 if not current.enabled and duplicate is not None and duplicate.id != current.id and duplicate.enabled:
                     current.last_checked_at = utc_now()
                     db.commit()
                     return IngestionOutcome("skipped", current.id, "DISABLED_DUPLICATE")
+                # Recheck dedup inside the publish transaction, after staging.
+                still_unchanged = (duplicate is not None and duplicate.state == 'ready'
+                                   and duplicate.index_profile == profile and self.indexer.usable(duplicate))
+                if unchanged and not still_unchanged:
+                    raise ValueError('INDEX_CHANGED_DURING_STAGING')
+                unchanged = still_unchanged
                 had_content = current.content_hash is not None
                 other_origins = db.scalar(select(exists().where(DocumentOrigin.document_id == current.id,
                                                                DocumentOrigin.id != origin_id)))
@@ -242,10 +255,28 @@ class DocumentService:
                         **{key: staged_metadata[key] for key in ("year", "campus", "major_code", "method")})
                     db.add(target); db.flush()
                 if not unchanged:
+                    target.title = staged_metadata['title']
+                    for key in ('year', 'campus', 'major_code', 'method'):
+                        setattr(target, key, staged_metadata[key])
+                    target.context_key = target_context
                     target.content_text, target.content_hash = text, content_hash
                     target.index_profile, target.state = profile, "ready"
                     target.quality_reason, target.last_update_error = None, None
                     target.updated_at = utc_now()
+                    # Legacy contract fixtures return None/Mock. Production Indexer
+                    # returns validated staging rows; no embedding runs under lock.
+                    if isinstance(staged_chunks, list):
+                        if not staged_chunks:
+                            raise ValueError('EMPTY_CHUNKS')
+                        from app.services.embedding import read_vector
+                        db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == target.id))
+                        for chunk in staged_chunks:
+                            read_vector(chunk['embedding'])
+                            public_snapshot = snapshot | {key: staged_metadata.get(key) for key in
+                                ('title', 'year', 'campus', 'major_code', 'method')}
+                            public_snapshot.update(page=chunk['page'], section=chunk['section'])
+                            db.add(DocumentChunk(document_id=target.id, **chunk,
+                                                 source_snapshot_json=public_snapshot))
                 target.raw_hash, target.last_checked_at = raw_hash, utc_now()
                 target.last_update_error = None
                 if target.provenance_note is None:
@@ -290,10 +321,9 @@ class DocumentService:
         with self.publish_lock, self.database.session() as db:
             doc = get_document(db, identity)
             if enabled:
-                usable_origin = db.scalar(select(DocumentOrigin).join(DataSource).where(
-                    DocumentOrigin.document_id == identity, DocumentOrigin.active.is_(True),
-                    DataSource.enabled.is_(True), DataSource.permission_status == "allowed"))
-                if (doc.state != "ready" or usable_origin is None or self.indexer is None
+                from app.services.retrieval import usable_origins
+                if (doc.state != "ready" or not usable_origins(db, identity) or self.indexer is None
+                        or doc.index_profile != self._profile()
                         or not self.indexer.usable(doc)):
                     raise HTTPException(409)
             doc.enabled, doc.updated_at = enabled, utc_now()

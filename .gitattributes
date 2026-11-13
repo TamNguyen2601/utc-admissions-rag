@@ -1,0 +1,5 @@
+# Preserve fixture bytes on Windows: PDF streams must not undergo CRLF conversion.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary

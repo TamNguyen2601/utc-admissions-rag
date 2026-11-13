@@ -1,7 +1,7 @@
-"""Knowledge checkpoint B1; no chunks or vector storage until T025."""
+"""Local knowledge and persistent E5 chunk vectors."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, JSON, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, JSON, LargeBinary, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, CreatedAtMixin, UTCDateTime, UUIDMixin, utc_now
@@ -81,3 +81,32 @@ class DocumentOrigin(UUIDMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     retrieved_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class DocumentChunk(UUIDMixin, Base):
+    __tablename__ = "document_chunks"
+    __table_args__ = (
+        UniqueConstraint('document_id', 'ordinal'),
+        CheckConstraint('ordinal >= 0'),
+        CheckConstraint("embedding_dim = 384 AND typeof(embedding) = 'blob' AND length(embedding) = 1536"),
+        CheckConstraint("extraction_kind IN ('native','ocr')"),
+        CheckConstraint('numeric_eligible IN (0,1)'),
+        CheckConstraint("extraction_kind != 'ocr' OR numeric_eligible = 0"),
+        CheckConstraint('page IS NULL OR page >= 1'),
+        CheckConstraint('length(trim(text)) > 0'),
+    )
+    document_id: Mapped[str] = mapped_column(ForeignKey('documents.id', ondelete='CASCADE'), index=True)
+    ordinal: Mapped[int]
+    text: Mapped[str] = mapped_column(Text)
+    chunk_hash: Mapped[str] = mapped_column(String(64))
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    embedding_dim: Mapped[int] = mapped_column(default=384)
+    extraction_kind: Mapped[str] = mapped_column(String)
+    numeric_eligible: Mapped[bool] = mapped_column(Boolean)
+    source_snapshot_json: Mapped[dict] = mapped_column(JSON)
+    year: Mapped[int | None]
+    campus: Mapped[str | None] = mapped_column(String)
+    major_code: Mapped[str | None] = mapped_column(String)
+    method: Mapped[str | None] = mapped_column(String)
+    page: Mapped[int | None]
+    section: Mapped[str | None] = mapped_column(Text)

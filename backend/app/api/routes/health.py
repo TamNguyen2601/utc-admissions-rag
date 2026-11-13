@@ -38,7 +38,7 @@ def probe_ocr(settings: Settings) -> bool:
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
     return HealthResponse(
-        status="ok", embedding_ready=request.app.state.embedding_ready,
+        status="ok", embedding_ready=request.app.state.encoder.ready,
         ocr_available=request.app.state.ocr_available,
         gemini_configured=request.app.state.settings.gemini_api_key is not None,
     )

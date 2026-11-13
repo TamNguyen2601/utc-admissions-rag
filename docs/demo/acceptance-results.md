@@ -539,3 +539,65 @@ Lượt smoke đầu trong sandbox bị chặn quyền thư mục Temp; đã đ�
 ngoài sandbox và tất cả ca smoke ở trên hoàn tất. Không có extension hook được
 đăng ký (`.specify/extensions.yml` không tồn tại). Checklist giữ nguyên theo lần
 chấp thuận trước; T025 trở đi chưa triển khai. Không commit/push/merge.
+
+## Nghiệm thu T025–T029 — checkpoint C
+
+Ngày **2026-11-13**, Asia/Ho_Chi_Minh. Phạm vi chỉ T025–T029. Phần này cập nhật
+trạng thái B2 phía trên; các bản ghi cũ giữ nguyên như bằng chứng lịch sử.
+Đã đọc skill speckit-implement, spec/plan/data-model/research/architecture/tasks/
+testing/REST/constitution/quickstart và source. Checklist 30/35 đã checked, 5 mục
+cổng demo còn trống; người dùng đã xác nhận tiếp tục. Không sửa checklist.
+Không có `.specify/extensions.yml` trước/sau triển khai, không có hook để dispatch.
+Ignore đã kiểm theo stack; thêm `.vscode/`. Không thêm dependency/đổi lockfile.
+
+| Task | Kết quả thực tế |
+| --- | --- |
+| T025 | PASS: thêm `document_chunks`, FK cascade, unique doc/ordinal, dim384, BLOB thật1536bytes, page>=1, native/ocr và OCR numeric=false. Chia cửa sổ tối đa320 token bằng offset tokenizer, overlap48 cho phần thân, không trộn trang/section. Lặp lại cây header và điều kiện trước từng dòng bảng; header được tính trong320, kiểm lại passage+special<=512. Dòng bảng giữ nguyên; dòng/header quá dài bị từ chối an toàn. Snapshot có origin/URL/title/source/context/page/section, không note riêng. |
+| T026 | PASS: singleton theo model/revision/cache, chỉ CPU, cache-only, không tải tự động; revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`. Cấu hình model/revision được chụp cố định trong encoder. Prefix `passage:`/`query:`, khóa chung cho tokenizer/encode, L2 và little-endian float32. Từ chối dim/NaN/Inf/zero norm sai. Không truncate query; quá512 gồm prefix/special trả422 `QUERY_TOO_LONG`. Health embedding_ready=true sau khi model đã load. |
+| T027 | PASS: extraction/chunk/embed ngoài khóa và transaction publish; thay text/hash/profile/chunks trong transaction ngắn có rollback. Kiểm lại document/origin hiện hành, quyền/scope nguồn và enabled. Encode lỗi hoặc insert chunks lỗi giữ đúng BLOB/hash/text ready cũ. Disable giữa staging vẫn false; delete giữa staging trả DOCUMENT_REMOVED và không tái tạo trong item cũ. Dedup nguyên profile encode0; profile đổi reindex; split/merge và DISABLED_DUPLICATE giữ disable. Upload/crawl dùng DocumentService và coordinator hiện có. |
+| T028 | PASS: NumPy cosine top5, threshold từ RETRIEVAL_MIN_SIMILARITY mặc định0,75; lọc profile chính xác, ready/enabled, 4 trường context, origin active và nguồn usable/scope hiện hành. Không cache vectors. Query encode ngoài khóa; kiểm DB sau encode nên disable trong query loại tài liệu ngay. Snapshot available kiểm doc/chunk/hash/nguồn hiện hành. GET /api/v1/documents/{id}/source có response schema đóng, origins/excerpts và filter page;410 unavailable,404 deleted; không private note/file path. |
+| T029 | PASS: integration SQLite file tạm, service thật + encoder xác định được; API upload202→coordinator→chunks→retrieval/source, nhiều notes/context/dedup và reopen DB. Có1new/1updated/1skipped/1error qua crawler fixture với indexer thật; reindex/rollback/restart/disable/enable/delete/recrawl, nguồn mất quyền, native page/header và OCR numeric=false đều kiểm. E5 CPU thật chạy riêng như bên dưới. |
+
+Các unit/integration dùng HTTP/OCR/encoder giả lập được ghi nhãn rõ, không phải
+live UTC hoặc live OCR smoke. Hai fixture PDF bảng bị lỗi zlib đã tái tạo bằng
+script sẵn có; thêm `.gitattributes` binary để tránh CRLF làm hỏng PDF stream.
+Schema init vẫn chỉ tạo bảng thiếu; không reset DB hiện có hoặc sửa DB demo.
+
+Lệnh thực tế từ `backend/`:
+
+```powershell
+uv run --locked --offline pytest -q --tb=short
+uv run --locked --offline python tests/smoke/check_knowledge_e5.py --output tests/smoke/knowledge-e5-local.json
+```
+
+Hồi quy cuối: **254 passed in 26.02s** (229 test cũ +25 ca mới).
+`git diff --check`: PASS.
+E5 CPU smoke: **PASS**, exit0; artifact [knowledge-e5-local.json](../../backend/tests/smoke/knowledge-e5-local.json).
+Lượt TDD đầu fail collection do chưa có chunking/retrieval, sau đó triển khai và
+chạy lại. Lượt smoke đầu hoàn tất assertions nhưng print tiếng Việt lỗi cp1252;
+đã sửa stdout dùng JSON ASCII, artifact vẫn UTF-8, các lượt sau exit0.
+uv cache/Temp bị sandbox chặn; các lệnh test/smoke đã chạy lại với quyền được cấp.
+
+| E5 CPU thật, cache local | Đo trên bản mã đã có khóa tokenizer/profile |
+| --- | --- |
+| Runtime | Python3.13.16; torch2.15.0+cpu; Intel64 Family6 Model154 Stepping3;20 logical CPU; torch14 threads |
+| Load model từ cache | 5,5196s, gồm import sentence-transformers; không gồm import torch đầu process |
+| Ingestion tài liệu đầu sau load | 37,1ms |
+| Retrieval warm, cùng câu hỏi10 lần | p50 **12,431ms**; p95 **16,211ms**; max **17,224ms** |
+| Kho đo latency | 3 đoạn tiếng Việt giả lập, 3 tài liệu; query encode + đọc/filter SQLite + NumPy cosine |
+| Boundary bằng tokenizer E5 thật | 7 chunks; max nội dung320 tokens; max324 kể cả passage/special;384 chiều, L2, float32, BLOB1536bytes |
+| Lifecycle bằng E5 thật | unchanged/dedup encode0, profile reindex, embedding update lỗi giữ bản cũ, disable→update→restart, enable, delete và recrawl; context/source filter và query quá dài422 |
+
+Giới hạn: đây là benchmark kho nhỏ/cùng câu hỏi, không phải tải lớn hoặc latency
+chat end-to-end. Threshold0,75 giữ nguyên cấu hình khởi đầu, **chưa hiệu chỉnh**:
+đoạn đúng chủ đề cosine0,856562 nhưng hai đoạn ít liên quan vẫn đạt0,836389 và
+0,834163, cùng vượt ngưỡng. Cosine không là xác suất hoặc đủ chứng minh evidence.
+Chưa triển khai evidence gate/Gemini/chat của T030 trở đi; không tuyên bố RAG
+trả lời hoàn chỉnh hoặc SC-010/demo đã đạt. Một backend process/worker; scan vectors
+NumPy tuyến tính, staging trong RAM; không benchmark kho lớn/multi-process.
+Mô hình thiếu cache sẽ thất bại an toàn, không tự dùng mạng/model khác. Bảng/header
+vượt budget bị từ chối thay vì cắt mất điều kiện. Cần reindex dữ liệu có profile cũ
+(extraction_version hiện là utc-c-2); retrieval loại profile cũ cho đến khi index lại.
+
+**T025–T029 đã đánh [X]. Checkpoint C PASS. T030–T070 giữ nguyên chưa triển khai.
+Không Gemini embedding, không dịch vụ vector ngoài, không commit/push/merge.**
