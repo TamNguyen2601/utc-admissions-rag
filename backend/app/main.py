@@ -18,6 +18,7 @@ from app.services.gemini import GeminiService
 from app.services.chat import ChatService
 from app.services.conversations import ConversationService
 from app.services.jobs import JobService
+from app.services.recommendation import RecommendationService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -40,7 +41,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.encoder = EmbeddingService.local(config)
             application.state.documents = DocumentService(database, config.upload_dir,
                 application.state.knowledge_lock, Indexer(database, application.state.encoder), extractor=Extractor(config))
-            application.state.jobs = JobService(database, application.state.documents, application.state.coordinator)
+            application.state.recommendation = RecommendationService(database)
+            application.state.jobs = JobService(database, application.state.documents, application.state.coordinator,
+                                                resolver=application.state.recommendation)
             application.state.retrieval = RetrievalService(database, application.state.encoder,
                 application.state.documents._profile(), application.state.knowledge_lock,
                 config.retrieval_min_similarity)
@@ -48,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.gemini = gemini
             application.state.conversations = ConversationService(database, application.state.retrieval)
             application.state.chat = ChatService(application.state.retrieval, gemini, config,
+                                                  catalogue_resolver=application.state.recommendation.resolves_scope,
                                                   conversations=application.state.conversations)
             application.state.ocr_available = probe_ocr(config)
             yield

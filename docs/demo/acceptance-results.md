@@ -766,3 +766,64 @@ tests kiểm trực tiếp các bản ghi này. Adapter TopCV chưa nối schedu
 
 **T038–T042 đã đánh [X], checkpoint E1 PASS offline. T043–T070 giữ nguyên chưa làm.
 Không commit/push/merge; không sửa frontend hoặc checklist. Demo SC-010 vẫn NOT READY.**
+
+## Bản ghi T043–T048 — checkpoint E2
+
+Ngày: **2026-11-13**, múi giờ **Asia/Ho_Chi_Minh (UTC+07:00)**.
+Chỉ triển khai quiz/catalogue/recommendation và tích hợp career T043–T048.
+Đã đối chiếu Spec Kit, data-model, testing M1/Q18–Q20, REST, architecture,
+research/quickstart, constitution và source career/scope/chat hiện có.
+Người dùng xác nhận tiếp tục khi requirements checklist còn5 mục chưa đánh dấu;
+không sửa checklist. `.gitignore` đủ cho stack Python/Node, không thêm dependency.
+Không có `.specify/extensions.yml` khi kiểm trước và sau, không có hooks để chạy.
+
+| Task | Kết quả và bằng chứng |
+| --- | --- |
+| T043 | PASS: thêm majors và quiz_questions, tổng13 bảng. UNIQUE(code,campus), active position partial unique1..10, FK document CASCADE, hash/page/nonempty/JSON constraints. Pydantic và ORM validate direction positive/negative/none cùng reason; import/read kiểm đủ mapping, mỗi câu có ngành khác none, mỗi ngành N>=1. Không bảng attempt/profile. |
+| T044 | PASS: CLI `python -m app.cli.import_catalog --file ...`, chạy khi backend dừng. JSON UTF-8 <=20MiB, duplicate keys/UUID aliases/extra fields/thiếu mapping bị từ chối. Nguồn ready/enabled/current hash, origins active và registry allowed/reuse/checked; URL UTC chính thức hoặc offline upload có publisher/provenance UTC. Tên/mã phải có trong nguồn. Một transaction thay catalogue+10 câu; validation lỗi hoặc SQL lỗi sau delete/partial insert đều giữ bản cũ. Rubric SHA256 bao gồm câu/directions/reasons/catalogue/source hashes, cùng dữ liệu đổi thứ tự array giữ version. |
+| T045 | PASS M1: contribution thuận=(a-1)/4, nghịch=(5-a)/4, none loại tổng/mẫu số/lý do. Dùng Fraction tính chính xác và sort raw score trước làm tròn2 chữ số; tie code/campus, top tối đa5 score>0 khi ít nhất3. Mỗi kết quả có nguồn và tối đa2 lý do contribution>=0,75, tie position; câu nghịch nói không đồng ý, không có xu hướng mạnh thì nêu rõ. N=0 bị từ chối import; dữ liệu hỏng khi đọc trả missing, không chia0. |
+| T046 | PASS Q18/Q19: GET /catalog/majors phân trang/campus, GET /quiz hai schema đóng đủ6khóa, 10 câu/options/scoring công khai. POST /recommendations chỉ version+10 answers duy nhất, int1..5, không bool/string/float/extra/điểm học tập. Đủ ready/data_missing/no_match/insufficient_matches, disclaimer chính xác; source thiếu ưu tiên data_missing trước stale409 RUBRIC_CHANGED; input sai422 INVALID_QUIZ_ANSWERS. Public Guest/account, Bearer sai401. |
+| T047 | PASS:119 ca mới, gồm S1–S6 ở unit và API, biên1/3/5, none/N=0/missing/direction hỏng, zero/1–2 positive, top3/4/5/6, tie campus/raw-score trước round, thứ tự lý do, source mất/đổi/vô hiệu hóa/xóa, sourcehash mới cần reimport, restart/idempotence, CLI lỗi/oversize và rollback SQL. Test số hàng toàn bộ13 bảng giữ nguyên cho quiz Guest/account và chặn Gemini generate. |
+| T048 | PASS Q20: JobService mặc định đọc catalogue SQLite; main nối cùng resolver vào jobs và chat scope. Hành trình API quiz→major→jobs không resolver stub: chỉ career_groups liên quan, null/khác nhóm không lọt, count đúng; nguồn ngành stale trả jobs data_missing/countnull, xóa ngành404, job nguồn độc lập vẫn usable. Scope nhận tên ngành/nhãn nhóm có nguồn, câu nghề chung vẫn hỏi lại, trường khác vẫn out_of_scope. |
+
+Expected/actual S1–S6 đều trùng:
+
+| Case | A/B/C | API và thứ tự |
+| --- | --- | --- |
+| S1 | 100/0/50 | insufficient_matches, items=[] |
+| S2 | 0/100/50 | insufficient_matches, items=[] |
+| S3 | 50/50/50 | ready A/B/C |
+| S4 | 75/25/50 | ready A/C/B |
+| S5 | 75/25/55 | ready A/C/B; none không đổi A/B |
+| S6 | 50/50/100 | ready C/A/B |
+
+Lệnh thực tế từ `backend/`:
+
+```powershell
+uv run --locked pytest -q tests/unit/test_recommendation.py tests/contract/test_quiz.py --tb=short -x
+uv run --locked pytest -q tests/unit/test_recommendation.py tests/contract/test_quiz.py tests/integration/test_quiz.py tests/integration/test_major_jobs.py --tb=short -x
+uv run --locked pytest -q --tb=short
+```
+
+TDD ban đầu fail collection do service chưa tồn tại. Nhóm đầu43 passed in5.96s;
+nhóm mở rộng110 passed in20.61s trước khi bổ sung9 biên cuối. Lượt toàn bộ đầu
+622 passed/2 failed: hai test foundation vẫn liệt kê11 bảng ở E1. Đã cập nhật
+kỳ vọng đủ13 bảng; giữ assertion metadata fixture cách ly/init idempotent/bảo toàn dữ liệu.
+Lượt cuối bao gồm mọi biên bổ sung: **633 passed in 81.18s** =514 cũ +119 mới.
+`git diff --check`: PASS. uv dùng quyền truy cập cache ngoài workspace được cấp.
+
+SQLite tạm, auth, TXT ingestion/chunk/index, catalogue CLI/service, scoring, jobs
+filter và REST là thật. Encoder/tokenizer xác định được và nội dung nguồn/publisher
+là **GIẢ LẬP**, offline_network chặn truy cập ngoài máy; không tải hoặc giả trình
+bày catalogue UTC chính thức. Không dùng Gemini để chấm, không nhận/so sánh điểm
+xét tuyển, không persist answers hoặc đưa fixture vào database thật.
+
+Hướng dẫn định dạng file/nguồn và cách chạy: [catalogue-import.md](../catalogue-import.md).
+Tác giả phải đối chiếu mô tả/cơ sở/trang và mapping với nguồn; kiểm identity/hash/quyền
+không chứng minh tự động mọi diễn giải. CLI là full replacement và yêu cầu backend
+dừng, không thêm khóa liên tiến trình ngoài kiến trúc một backend của Spec.
+
+**T043–T048 đã đánh [X], E2 PASS offline. T049–T070 chưa làm, không giao diện T052+,
+không commit/push/merge, không sửa checklist. Catalogue/quiz demo thật T067 chưa nạp;
+kho thiếu dữ liệu hợp lệ vẫn trả data_missing. Không nghiệm thu TopCV/Gemini live,
+E5/OCR smoke mới hoặc demo SC-010; demo vẫn NOT READY.**

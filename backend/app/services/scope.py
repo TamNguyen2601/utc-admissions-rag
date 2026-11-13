@@ -61,8 +61,8 @@ def classify(payload: GuestChatInput, catalogue_resolver=None):
             rejected.append(part)
             continue
         direct = bool(UTC.search(part))
-        relevant = bool(TOPIC.search(part))
-        catalogued = bool(catalogue_resolver and catalogue_resolver(part)) if relevant else False
+        catalogued = bool(catalogue_resolver and catalogue_resolver(part))
+        relevant = bool(TOPIC.search(part)) or catalogued
         if relevant and (direct or confirmed or catalogued):
             included.append(part)
             confirmed = True

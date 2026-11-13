@@ -14,6 +14,7 @@ from app.models.knowledge import DataSource, Document, DocumentChunk, DocumentOr
 from app.services.documents import IngestionOutcome, normalized_text
 from app.services.embedding import read_vector
 from app.services.sources import require_usable, validate_source_url
+from app.services.recommendation import RecommendationService
 
 PAYLOAD_FIELDS = ('external_id', 'title', 'employer', 'description', 'posted_at', 'deadline_at',
                   'observed_status', 'career_group', 'classification_reason')
@@ -24,15 +25,9 @@ SCOPE_NOTE = ('Số tin đang tuyển quan sát được từ các nguồn và t
 
 
 class CareerResolver(Protocol):
-    """Catalogue seam for T048. None = stale/unusable major; missing major raises 404."""
+    """None = stale/unusable major; missing major raises 404."""
     def career_groups(self) -> set[str]: ...
     def major_groups(self, major_id: str) -> set[str] | None: ...
-
-
-class EmptyCareerResolver:
-    """E1 has no real catalogue. Do not fabricate majors or group codes."""
-    def career_groups(self): return set()
-    def major_groups(self, major_id): raise HTTPException(404)
 
 
 class JobRowError(ValueError):
@@ -60,7 +55,7 @@ def job_status(job, now):
 class JobService:
     def __init__(self, database, documents, coordinator, *, resolver=None, now=utc_now):
         self.database, self.documents, self.coordinator = database, documents, coordinator
-        self.resolver, self.now = resolver or EmptyCareerResolver(), now
+        self.resolver, self.now = resolver or RecommendationService(database), now
 
     def import_rows(self, run_id, rows, default_source_id=None):
         from app.services.adapters.job_import import JobImportAdapter

@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T042 đã triển khai đến checkpoint E1; jobs/import/status/count được kiểm bằng SQLite tạm, encoder xác định được và HTTP TopCV giả lập. Toàn bộ pytest: 514 passed; T038–T042 bổ sung 79 ca. Major filter chỉ kiểm contract với resolver stub, chưa nối catalogue thật (T048). E5 CPU smoke riêng đã PASS ở checkpoint C. Dừng sau T042; T043+ chưa triển khai, chưa nghiệm thu TopCV/Gemini live hoặc demo.
-**Bằng chứng**: [Kết quả thực tế T001–T042](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T048 đã triển khai đến checkpoint E2 offline. Catalogue/quiz/scoring/API và jobs/scope dùng catalogue SQLite thật trong test, nguồn ngành/encoder được giả lập có nhãn. Toàn bộ pytest: **633 passed in 81.18s**; T043–T048 bổ sung119 ca, gồm M1 S1–S6/Q18–Q20 và các biên. CLI kiểm nguồn/hash/mapping và thay catalogue atomic; không nạp fixture vào kho thật. E5 CPU smoke đã PASS riêng ở checkpoint C. T049–T070 chưa làm; catalogue demo thật T067, TopCV/Gemini live và demo SC-010 chưa nghiệm thu.
+**Bằng chứng**: [Kết quả thực tế T001–T048](../../docs/demo/acceptance-results.md), [hướng dẫn catalogue CLI](../../docs/catalogue-import.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -242,35 +242,36 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 9. Quiz và gợi ý ngành — checkpoint E2
 
-- [ ] T043 [Database/quiz/catalogue] [US5] majors có sourcehash/description/career_groups; quiz10 positions/scoring_json direction positive/negative/none + reason.
+- [X] T043 [Database/quiz/catalogue] [US5] majors có sourcehash/description/career_groups; quiz10 positions/scoring_json direction positive/negative/none + reason.
   - File: `backend/app/models/quiz.py`.
   - Phụ thuộc: T013, T029; coverage: FR-022 FR-025.
   - Nghiệm thu: Uniquecode/campus/position; direction enum, đủ mapping, mỗi ngành N>=1/mỗi câu>=1 ngành khácnone; không profile thí sinh.
 
-- [ ] T044 [Recommendation/catalogue CLI] [US5] CLI nhập catalogue+10câu+mapping từ file có nguồn, backend dừng; atomic validate, rubric_version hash.
+- [X] T044 [Recommendation/catalogue CLI] [US5] CLI nhập catalogue+10câu+mapping từ file có nguồn, backend dừng; atomic validate, rubric_version hash.
   - File: `backend/app/cli/import_catalog.py`, `backend/app/services/recommendation.py`.
   - Phụ thuộc: T043, T016; coverage: FR-022 FR-023 FR-024 FR-025.
   - Nghiệm thu: Source ready/current/allowed,>=3ngành, N>=1 và mapping đủ/đúngchiều, direction/reason vào rubric hash; invalid rollback, không tạo thông tin giả.
 
-- [ ] T045 [Recommendation/scoring] [US5] Contribution thuận=(a-1)/4, nghịch=(5-a)/4, none loại; fit=100*sum(c)/N, sort chưa round/code/campus, top3–5.
+- [X] T045 [Recommendation/scoring] [US5] Contribution thuận=(a-1)/4, nghịch=(5-a)/4, none loại; fit=100*sum(c)/N, sort chưa round/code/campus, top3–5.
   - File: `backend/app/services/recommendation.py`.
   - Phụ thuộc: T044; coverage: FR-022 FR-023 FR-024.
   - Nghiệm thu: M1 cases S1–S6/biên1-3-5 đúng, none không mẫu số/lý do; reason tối đa2 với c>=0,75 đúng chiều; tie/zero/missing, không Gemini/điểm học tập.
 
-- [ ] T046 [Quiz/API] [US5] GET catalogue/quiz hai schema với scoring direction/reason; POST chỉ rubric_version/answers và mọi result state.
+- [X] T046 [Quiz/API] [US5] GET catalogue/quiz hai schema với scoring direction/reason; POST chỉ rubric_version/answers và mọi result state.
   - File: `backend/app/api/routes/quiz.py`, `backend/app/schemas/quiz.py`.
   - Phụ thuộc: T045; coverage: FR-022 FR-023 FR-024 FR-025.
   - Nghiệm thu: Ready/missing đủ6khóa GET, direction enum; đổichiều rubric409,422invalid, disclaimer/source/reason đúngthuận-nghịch; không input học tập.
 
-- [ ] T047 [Test/quiz] [US5] M1 S1–S6 theo testing.md, contribution biên1/3/5, none/N=0/mapping thiếu, source/version, zero/insufficient_matches.
+- [X] T047 [Test/quiz] [US5] M1 S1–S6 theo testing.md, contribution biên1/3/5, none/N=0/mapping thiếu, source/version, zero/insufficient_matches.
   - File: `backend/tests/unit/test_recommendation.py`, `backend/tests/contract/test_quiz.py`, `backend/tests/integration/test_quiz.py`.
   - Phụ thuộc: T046; coverage: FR-022 FR-023 FR-024 FR-025 SC-005.
   - Nghiệm thu: Q18/Q19/M1 pass: S1=(100,0,50), S2=(0,100,50), S3=(50,50,50), S4=(75,25,50), S5=(75,25,55), S6=(50,50,100); none không đổi A/B, reason nghịch đúng; missing/stale/status đúng.
 
-- [ ] T048 [Career-major integration] [US5/US6] Nối major career_groups thật vào jobs filter và scope resolver, nguồn/mapping stale check; chạy hành trình quiz→ngành→nghề.
+- [X] T048 [Career-major integration] [US5/US6] Nối major career_groups thật vào jobs filter và scope resolver, nguồn/mapping stale check; chạy hành trình quiz→ngành→nghề.
   - File: `backend/app/services/jobs.py`, `backend/tests/integration/test_major_jobs.py`.
   - Phụ thuộc: T034, T041, T042, T044, T046, T047; coverage: FR-017 FR-023 FR-025 SC-006.
   - Nghiệm thu: Q20 pass, null/khác nhóm không lọt; scope nhận nghề liên quan catalogue, mơ hồ vẫn hỏi lại; checkpoint E2 sau toàn dependency.
+  - Bằng chứng T043–T048:119 ca mới trong `tests/unit/test_recommendation.py`, `tests/contract/test_quiz.py`, `tests/integration/test_quiz.py`, `tests/integration/test_major_jobs.py`; toàn bộ `uv run --locked pytest -q --tb=short`: **633 passed in 81.18s**. SQLite/auth/import/index/catalogue/scoring/jobs/API thật, encoder và nội dung nguồn ngành giả lập; không resolver stub cho hành trình E2. Catalogue thật dành T067, không tự tạo dữ liệu UTC. Chi tiết trong báo cáo nghiệm thu và hướng dẫn CLI.
 
 ## 10. Scheduler — checkpoint F
 

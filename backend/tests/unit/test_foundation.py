@@ -152,11 +152,11 @@ def test_initialize_twice_preserves_data_and_adds_only_missing_tables(database, 
     with database.session() as session:
         assert session.get(FixtureParent, parent_id).label == "GIẢ LẬP"
     assert "fixture_added_later" in inspect(database.engine).get_table_names()
-    # Checkpoint E1 adds job identities; fixture metadata stays isolated.
+    # Checkpoint E2 registers all 13 tables; fixture metadata stays isolated.
     assert set(Base.metadata.tables) == {
         "users", "auth_sessions", "data_sources", "documents", "document_origins",
         "crawl_runs", "crawl_run_items", "document_chunks", "conversations", "messages",
-        "job_postings",
+        "job_postings", "majors", "quiz_questions",
     }
     assert "users" not in inspect(database.engine).get_table_names()
 
@@ -264,7 +264,7 @@ def test_health_without_key_and_no_domain_services(application, fake_ocr, fake_e
         assert set(inspect(application.state.database.engine).get_table_names()) == {
             "users", "auth_sessions", "data_sources", "documents", "document_origins",
             "crawl_runs", "crawl_run_items", "document_chunks", "conversations", "messages",
-            "job_postings",
+            "job_postings", "majors", "quiz_questions",
         }
         assert not hasattr(application.state, "scheduler")
     fake_ocr.assert_called_once()

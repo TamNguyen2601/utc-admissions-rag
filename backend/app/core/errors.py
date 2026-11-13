@@ -9,6 +9,7 @@ from app.services.auth import InvalidCredentials
 from app.services.coordinator import RunInProgress
 from app.services.embedding import QueryTooLong
 from app.services.gemini import ChatError
+from app.services.recommendation import QuizError
 
 ERRORS = {
     400: ("BAD_REQUEST", "Yêu cầu không hợp lệ."),
@@ -51,12 +52,16 @@ def register_error_handlers(app: FastAPI) -> None:
             code = "QUERY_TOO_LONG"
         if isinstance(exc, ChatError):
             code = exc.code
+        if isinstance(exc, QuizError):
+            code = exc.code
         return error_response(exc.status_code, code=code, headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, _exc: RequestValidationError):
         # Do not reflect Pydantic input/body/ctx/msg to the public response.
-        return error_response(422)
+        code = 'INVALID_QUIZ_ANSWERS' if (_request.method == 'POST'
+            and _request.url.path == '/api/v1/recommendations') else None
+        return error_response(422, code=code)
 
 
 class ExceptionBoundaryMiddleware:
