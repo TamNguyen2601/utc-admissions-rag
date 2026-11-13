@@ -98,8 +98,9 @@ class SafeFetcher:
                 source = self.reload_source(source.id)
             try:
                 require_usable(source)
-                if (source.kind != "utc" or not source.robots_url or not source.terms_url
-                        or urlsplit(canonical_url(source.base_url)).hostname != "tuyensinh.utc.edu.vn"):
+                hosts = {'utc': {'tuyensinh.utc.edu.vn'}, 'topcv': {'topcv.vn', 'www.topcv.vn'}}
+                if (source.kind not in hosts or not source.robots_url or not source.terms_url
+                        or urlsplit(canonical_url(source.base_url)).hostname not in hosts[source.kind]):
                     raise CrawlError("SOURCE_NOT_VERIFIED")
                 if source.retry_not_before and source.retry_not_before > self.now():
                     raise CrawlError("RETRY_NOT_BEFORE")
@@ -131,6 +132,9 @@ class SafeFetcher:
                 try:
                     latest = self.reload_source(source.id)
                     require_usable(latest)
+                    if (latest.kind not in hosts or not latest.base_url
+                            or urlsplit(canonical_url(latest.base_url)).hostname not in hosts[latest.kind]):
+                        raise ValueError
                     if robots_resource:
                         if canonical_url(latest.robots_url) != url:
                             raise ValueError
