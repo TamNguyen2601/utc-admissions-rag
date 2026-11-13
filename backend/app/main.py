@@ -12,6 +12,8 @@ from app.db.session import Database
 from app.services.coordinator import Coordinator
 from app.services.documents import DocumentService
 from app.services.extraction import Extractor
+from app.services.embedding import EmbeddingService, Indexer
+from app.services.retrieval import RetrievalService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,9 +32,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.database = database
             application.state.knowledge_lock = Lock()
             application.state.coordinator = Coordinator(database)
+            application.state.encoder = EmbeddingService.local(config)
             application.state.documents = DocumentService(database, config.upload_dir,
-                application.state.knowledge_lock, extractor=Extractor(config))
-            application.state.embedding_ready = False
+                application.state.knowledge_lock, Indexer(database, application.state.encoder), extractor=Extractor(config))
+            application.state.retrieval = RetrievalService(database, application.state.encoder,
+                application.state.documents._profile(), application.state.knowledge_lock,
+                config.retrieval_min_similarity)
             application.state.ocr_available = probe_ocr(config)
             yield
         finally:

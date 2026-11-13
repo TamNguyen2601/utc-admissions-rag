@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 from app.core.logging import request_id_context
 from app.services.auth import InvalidCredentials
 from app.services.coordinator import RunInProgress
+from app.services.embedding import QueryTooLong
 
 ERRORS = {
     400: ("BAD_REQUEST", "Yêu cầu không hợp lệ."),
@@ -45,6 +46,8 @@ def register_error_handlers(app: FastAPI) -> None:
         code = "INVALID_CREDENTIALS" if isinstance(exc, InvalidCredentials) else None
         if isinstance(exc, RunInProgress):
             code = "RUN_IN_PROGRESS"
+        if isinstance(exc, QueryTooLong):
+            code = "QUERY_TOO_LONG"
         return error_response(exc.status_code, code=code, headers=headers)
 
     @app.exception_handler(RequestValidationError)

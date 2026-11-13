@@ -36,7 +36,7 @@ class ExtractionResult:
 
     @property
     def text(self):
-        return "\n\n".join(p.text for p in self.pages)
+        return "\n\n".join(((p.section + '\n') if p.section else '') + p.text for p in self.pages)
 
     def page_metadata(self):
         return [asdict(p) for p in self.pages]
@@ -67,7 +67,7 @@ class Extractor:
 
     @property
     def profile(self):
-        return {"extraction_version": "utc-b2-1", "ocr_languages": "vie+eng",
+        return {"extraction_version": "utc-c-2", "ocr_languages": "vie+eng",
                 "ocr_confidence": 90, "ocr_min_characters": 30,
                 "max_pages": self.settings.max_document_pages}
 
@@ -95,7 +95,26 @@ class Extractor:
                 if not headers and any(re.search(r"\d", cell) for row in rows for cell in row):
                     raise ExtractionError("TABLE_HEADER_MISSING")
                 table.replace_with(soup.new_string(table_text(rows, headers)))
-            result = ExtractionResult((ExtractedPage(1, root.get_text("\n", strip=True)),), context)
+            # Retain the heading hierarchy for every section, including later
+            # windows of long sections. A new heading is a chunk boundary.
+            sections, lines, headings = [], [], {}
+            for node in root.descendants:
+                if getattr(node, 'name', None) in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
+                    if lines:
+                        sections.append(ExtractedPage(1, '\n'.join(lines),
+                            section=' / '.join(headings.values()) or None))
+                        lines = []
+                    level = int(node.name[1])
+                    headings = {k: v for k, v in headings.items() if k < level}
+                    headings[level] = node.get_text(' ', strip=True)
+                elif isinstance(node, str) and node.strip():
+                    # Heading text is already captured as section metadata.
+                    if not any(parent.name in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'} for parent in node.parents):
+                        lines.append(node.strip())
+            if lines or headings:
+                sections.append(ExtractedPage(1, '\n'.join(lines) or ' / '.join(headings.values()),
+                    section=' / '.join(headings.values()) or None))
+            result = ExtractionResult(tuple(sections), context)
         elif media_type == "text/plain":
             try:
                 text = data.decode("utf-8-sig")
