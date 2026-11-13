@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T007 đã triển khai và nghiệm thu setup/smoke/Foundation; T008 trở đi chưa triển khai.
-**Bằng chứng**: [Kết quả thực tế T001–T007](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T012 đã triển khai và nghiệm thu setup/smoke/Foundation/auth; dừng sau T012, T013 trở đi chưa triển khai.
+**Bằng chứng**: [Kết quả thực tế T001–T012](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -50,27 +50,27 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 2. Database và authentication — checkpoint A
 
-- [ ] T008 [Database/auth] [US3] users/auth_sessions theo data model, email unique/role enum/session revoke.
+- [x] T008 [Database/auth] [US3] users/auth_sessions theo data model, email unique/role enum/session revoke.
   - File: `backend/app/models/identity.py`.
   - Phụ thuộc: T005, T007; coverage: FR-026 FR-027.
   - Nghiệm thu: DB tests unique email/role/session FK pass; không raw password/JWT.
 
-- [ ] T009 [Auth] [US3] Argon2id, JWT HS256 sub/sid/iat/exp/iss/aud30phút; login/logout revoke sid.
+- [x] T009 [Auth] [US3] Argon2id, JWT HS256 sub/sid/iat/exp/iss/aud30phút; login/logout revoke sid.
   - File: `backend/app/core/security.py`, `backend/app/services/auth.py`.
   - Phụ thuộc: T008; coverage: FR-026.
   - Nghiệm thu: Unit hash verify đúng/sai, token expiry/signature/audience/revoked đúng; không lưu secret log.
 
-- [ ] T010 [Auth/RBAC] [US3] optional/required auth, DB role/active/session, require_admin và owner helper deny mặc định.
+- [x] T010 [Auth/RBAC] [US3] optional/required auth, DB role/active/session, require_admin và owner helper deny mặc định.
   - File: `backend/app/api/deps.py`.
   - Phụ thuộc: T009; coverage: FR-027 FR-028.
   - Nghiệm thu: Invalid Bearer401 không Guest; Guest401/USER403 trên Admin; ADMIN không vượt owner.
 
-- [ ] T011 [Auth/API/CLI] [US3] Register/login/me/logout JSON strict, email/password validation; CLI email/password prompt không echo.
+- [x] T011 [Auth/API/CLI] [US3] Register/login/me/logout JSON strict, email/password validation; CLI email/password prompt không echo.
   - File: `backend/app/api/routes/auth.py`, `backend/app/schemas/auth.py`, `backend/app/cli/create_admin.py`.
   - Phụ thuộc: T010; coverage: FR-026 FR-027.
   - Nghiệm thu: Register luôn USER, extra role422, duplicate409, logout204 sau revoke; CLI không hardcode account.
 
-- [ ] T012 [Test/auth] [US3] Nghiệm thu auth/RBAC bằng Guest/2USER/ADMIN và token giả/hết hạn/revoked/inactive.
+- [x] T012 [Test/auth] [US3] Nghiệm thu auth/RBAC bằng Guest/2USER/ADMIN và token giả/hết hạn/revoked/inactive.
   - File: `backend/tests/contract/test_auth.py`, `backend/tests/integration/test_auth.py`.
   - Phụ thuộc: T011; coverage: FR-026 FR-027 FR-028 SC-004.
   - Nghiệm thu: Q02 pass, 401 header/403 đúng; password rõ/key không lộ. Checkpoint A hoàn tất sau T007 và T012.

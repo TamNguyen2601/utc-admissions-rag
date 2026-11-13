@@ -46,7 +46,9 @@ class Database:
         self.session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
 
     def initialize(self, metadata: MetaData | None = None) -> None:
-        # No drop/reset and no automatic seed data. At T007 Base has no domain tables.
+        from app import models  # noqa: F401 — register domain tables for app and CLI
+
+        # No drop/reset and no automatic seed data.
         (metadata if metadata is not None else Base.metadata).create_all(self.engine)
 
     @contextmanager

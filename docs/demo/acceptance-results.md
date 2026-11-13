@@ -1,7 +1,7 @@
 # Kết quả nghiệm thu thực tế
 
-**Hiện tại: T001–T007 PASS; dừng sau T007. T008+ chưa triển khai.**
-Kết quả T004–T007 và cách chạy Foundation ở cuối file. Phần T001–T003 bên dưới
+**Hiện tại: T001–T012 PASS; Checkpoint A hoàn tất, dừng sau T012. T013+ chưa triển khai.**
+Kết quả T008–T012 và lệnh tạo Admin ở cuối file. Phần T001–T007 bên dưới
 là bản ghi lịch sử của lượt trước; các giới hạn tại thời điểm đó được giữ nguyên.
 
 ## Bản ghi T001–T003
@@ -332,3 +332,64 @@ nghiệm thu đầy đủ security/integration/SC-010. Cả5 mục checklist tr�
 
 Tham khảo thiết lập transaction/PRAGMA: [SQLAlchemy SQLite](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html).
 Kết luận PASS dựa trên pytest và HTTP thực đã chạy ở trên.
+
+## Bản ghi T008–T012 — Authentication / Checkpoint A
+
+Ngày: **2026-11-13**, múi giờ **Asia/Ho_Chi_Minh (UTC+07:00)**.
+Chỉ triển khai T008–T012, không commit/push/merge, không tạo tài khoản demo thật.
+Người dùng đã đồng ý tiếp tục dù 5 checklist trước demo chưa đánh dấu;
+không sửa checklist. Không có `.specify/extensions.yml`, không có pre/post hook.
+
+| Task | Kết quả thực tế |
+| --- | --- |
+| T008 | PASS: users email unique, role USER/ADMIN có DB constraint, auth_sessions FK/UTC/revoked_at; init/reopen không mất dữ liệu. Không lưu raw password/JWT. |
+| T009 | PASS: Argon2id verify đúng/sai; JWT HS256 sub/sid/iat/exp/iss/aud, 1800 giây. Từ chối chữ ký/algorithm/claims sai, hết hạn, revoked và session DB không hợp lệ. |
+| T010 | PASS: Guest401, USER403, ADMIN200 trên route probe quản trị; role/active đọc DB; invalid Authorization không downgrade Guest. Owner khác404 kể cả ADMIN. |
+| T011 | PASS: register201 luôn USER, extra role422, duplicate409; login200, me200, logout204 revoke riêng sid. CLI prompt password không echo, từ chối terminal không bảo đảm ẩn password, không hardcode account hoặc nâng quyền tài khoản đã tồn tại. |
+| T012 | PASS: auth contract + integration thật dùng SQLite file tạm/Argon2id/PyJWT; Guest/2USER/ADMIN, token giả/hết hạn/revoked/inactive, session qua reopen, không lộ password/token/key trong lỗi/log. |
+
+Lệnh kiểm thử từ `backend/`:
+
+```powershell
+uv run --locked pytest -q
+```
+
+Kết quả cuối: **133 passed in 36.99s** (toàn bộ smoke/Foundation/auth, offline).
+Contract được viết/chạy trước implementation: 20 test ban đầu fail404 đúng vì chưa có routes,
+sau triển khai 20 pass. Lượt toàn suite đầu gặp trùng tên module test; đã thêm package
+contract/integration. Lượt sau 128 pass/2 fail do assertion T007 giả định chưa có domain tables;
+đã cập nhật assertion đúng schema identity, giữ kiểm tra fixture isolation và Foundation.
+Kết quả cuối gồm thêm kiểm tra Bearer sai trên register/login và revoke qua reopen DB.
+
+API hiện có thêm dưới `/api/v1`:
+
+| Method/path | Thành công | Quyền |
+| --- | --- | --- |
+| POST /auth/register | 201 `{id,email,role}` | Public; role luôn USER |
+| POST /auth/login | 200 `{access_token,token_type,expires_in,user}` | Public; JSON email/password |
+| GET /auth/me | 200 `{id,email,role}` | Bearer hợp lệ |
+| POST /auth/logout | 204, body rỗng | Bearer hợp lệ, revoke sid |
+
+Login sai trả401 `INVALID_CREDENTIALS` chung, các401 có `WWW-Authenticate: Bearer`.
+Email trim/lowercase; password8..128, không trim password. JWT30 phút, không refresh token.
+
+Tạo Admin bằng terminal từ `backend/`, cấu hình `.env` riêng trước, backend dừng:
+
+```powershell
+uv run --locked python -m app.cli.init_db
+uv run --locked python -m app.cli.create_admin
+```
+
+CLI hỏi email/password riêng, không cần truyền password trên command line.
+Tests CLI dùng prompt giả lập và DB tạm, không tạo Admin trong DB demo.
+Tests RBAC/owner dùng route `/test/*` chỉ gắn trên app kiểm thử, không thêm API quản trị
+hoặc module hội thoại trước dependency. Nghiệm thu owner hội thoại thật vẫn ở T037.
+
+Files chính: `app/models/identity.py`, `app/core/security.py`, `app/services/auth.py`,
+`app/api/deps.py`, `app/schemas/auth.py`, `app/api/routes/auth.py`, `app/cli/create_admin.py`;
+nối router/error envelope/model registration vào Foundation. Tests mới:
+`tests/contract/test_auth.py`, `tests/integration/test_auth.py`; cập nhật hai assertion Foundation.
+Dependencies/lockfiles giữ nguyên. Ignore hiện có bao phủ Python/Node/env/data/cache;
+không có Docker/lint/publish/infra cần ignore riêng.
+
+**Dừng sau T012. Checkpoint A: PASS. T013–T070 chưa triển khai. Demo: NOT READY.**
