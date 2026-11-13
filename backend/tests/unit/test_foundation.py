@@ -152,7 +152,9 @@ def test_initialize_twice_preserves_data_and_adds_only_missing_tables(database, 
     with database.session() as session:
         assert session.get(FixtureParent, parent_id).label == "GIẢ LẬP"
     assert "fixture_added_later" in inspect(database.engine).get_table_names()
-    assert Base.metadata.tables == {}  # No T008+ domain tables introduced.
+    # T008 registers identity tables without polluting the separate fixture metadata.
+    assert set(Base.metadata.tables) == {"users", "auth_sessions"}
+    assert "users" not in inspect(database.engine).get_table_names()
 
 
 def test_uuid_and_utc_text_roundtrip(database, fake_clock):
@@ -255,7 +257,7 @@ def test_health_without_key_and_no_domain_services(application, fake_ocr, fake_e
         assert response.json() == {"status": "ok", "embedding_ready": False,
                                   "ocr_available": False, "gemini_configured": False}
         assert str(UUID(response.headers["x-request-id"]))
-        assert inspect(application.state.database.engine).get_table_names() == []
+        assert set(inspect(application.state.database.engine).get_table_names()) == {"users", "auth_sessions"}
         assert not hasattr(application.state, "scheduler")
     fake_ocr.assert_called_once()
     fake_encoder.encode.assert_not_called()

@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from app.core.logging import request_id_context
+from app.services.auth import InvalidCredentials
 
 ERRORS = {
     400: ("BAD_REQUEST", "Yêu cầu không hợp lệ."),
@@ -40,7 +41,8 @@ def register_error_handlers(app: FastAPI) -> None:
         headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
         if exc.status_code == 405 and exc.headers and "Allow" in exc.headers:
             headers = {"Allow": exc.headers["Allow"]}
-        return error_response(exc.status_code, headers=headers)
+        code = "INVALID_CREDENTIALS" if isinstance(exc, InvalidCredentials) else None
+        return error_response(exc.status_code, code=code, headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, _exc: RequestValidationError):
