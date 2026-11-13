@@ -1,6 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: Chưa triển khai source; toàn bộ task chưa hoàn thành.
+**Trạng thái**: T001–T007 đã triển khai và nghiệm thu setup/smoke/Foundation; T008 trở đi chưa triển khai.
+**Bằng chứng**: [Kết quả thực tế T001–T007](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -12,37 +13,37 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 1. Project setup
 
-- [ ] T001 [Setup/backend] [—] Khai báo stack backend theo plan, Python3.13 và uv; tạo lockfile, CPU dependencies; tzdata cho ZoneInfo Windows nếu cần.
+- [x] T001 [Setup/backend] [—] Khai báo stack backend theo plan, Python3.13 và uv; tạo lockfile, CPU dependencies; tzdata cho ZoneInfo Windows nếu cần.
   - File: `backend/pyproject.toml`, `backend/uv.lock`, `backend/.python-version`.
   - Phụ thuộc: không; coverage: FR-035.
   - Nghiệm thu: uv lock thành công, manifest không chứa framework ngoài plan; phiên bản lock được ghi, chưa đánh dấu smoke pass.
 
-- [ ] T002 [Setup/frontend] [US8] Khởi tạo React TypeScript Vite/Tailwind/Router/Axios, scripts dev/build; Node24.22.1/npm.
+- [x] T002 [Setup/frontend] [US8] Khởi tạo React TypeScript Vite/Tailwind/Router/Axios, scripts dev/build; Node24.22.1/npm.
   - File: `frontend/package.json`, `frontend/package-lock.json`, `frontend/src/main.tsx`.
   - Phụ thuộc: không; coverage: FR-033 FR-035.
   - Nghiệm thu: npm ci tái lập; chưa thêm Recharts/shadcn component không có nhu cầu.
 
-- [ ] T003 [Test/setup] [—] uv sync --locked, uv run import smoke các dependency Python3.13/CPU; npm ci/build; kiểm timezone/async SDK và timeout-retry API.
+- [x] T003 [Test/setup] [—] uv sync --locked, uv run import smoke các dependency Python3.13/CPU; npm ci/build; kiểm timezone/async SDK và timeout-retry API.
   - File: `backend/uv.lock`, `frontend/package-lock.json`, `docs/demo/acceptance-results.md`.
   - Phụ thuộc: T001, T002; coverage: FR-035 FR-036 SC-010.
   - Nghiệm thu: Ghi actual phiên bản, model revision tải được/CPU và tương thích; lỗi chặn được ghi, không tự đổi Python/stack/model.
 
-- [ ] T004 [Setup/config] [—] Settings DB/JWT/Gemini/E5/paths/CORS/deadline/OCR; mẫu không secret; ignore env/data/model cache.
+- [x] T004 [Setup/config] [—] Settings DB/JWT/Gemini/E5/paths/CORS/deadline/OCR; mẫu không secret; ignore env/data/model cache.
   - File: `backend/app/core/config.py`, `backend/.env.example`, `frontend/.env.example`, `.gitignore`.
   - Phụ thuộc: T003; coverage: FR-006 FR-034 FR-035.
   - Nghiệm thu: Thiếu key không chặn startup, JWT secret sai bị chặn; VITE chỉ API URL; không có key thật trong file/bundle.
 
-- [ ] T005 [Database] [—] Engine WAL/FK/busy_timeout5000, UUID/timeUTC, Session mỗi request/thread; init chỉ tạo thiếu.
+- [x] T005 [Database] [—] Engine WAL/FK/busy_timeout5000, UUID/timeUTC, Session mỗi request/thread; init chỉ tạo thiếu.
   - File: `backend/app/db/base.py`, `backend/app/db/session.py`, `backend/app/cli/init_db.py`.
   - Phụ thuộc: T004; coverage: FR-035.
   - Nghiệm thu: Init hai lần không mất dữ liệu; transaction rollback/FK được test ở T007.
 
-- [ ] T006 [Backend/API] [—] App/lifespan skeleton, request_id/error envelope, CORS allowlist, health flags, log metadata sanitize.
+- [x] T006 [Backend/API] [—] App/lifespan skeleton, request_id/error envelope, CORS allowlist, health flags, log metadata sanitize.
   - File: `backend/app/main.py`, `backend/app/api/router.py`, `backend/app/core/errors.py`, `backend/app/core/logging.py`, `backend/app/api/routes/health.py`.
   - Phụ thuộc: T004, T005; coverage: FR-034.
   - Nghiệm thu: Health không secret; lỗi không stack/path/key hoặc nội dung Guest; chưa start lịch khi scheduler chưa có.
 
-- [ ] T007 [Test/foundation] [—] SQLite file tạm, fake clock/network/encoder/Gemini/OCR; kiểm config/FK/init/rollback/error/CORS.
+- [x] T007 [Test/foundation] [—] SQLite file tạm, fake clock/network/encoder/Gemini/OCR; kiểm config/FK/init/rollback/error/CORS.
   - File: `backend/tests/conftest.py`, `backend/tests/unit/test_foundation.py`, `backend/tests/fixtures/`.
   - Phụ thuộc: T005, T006; coverage: FR-034 FR-035 FR-036.
   - Nghiệm thu: Offline mặc định; fixture ghi nhãn/cách ly; unit pass cả success và invalid config, không mạng thật.

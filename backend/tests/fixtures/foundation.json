@@ -1,0 +1,6 @@
+{
+  "label": "GIẢ LẬP — KHÔNG PHẢI THÔNG TIN UTC",
+  "clock_utc": "2026-11-13T03:00:00+00:00",
+  "network_response": {"fixture": true, "message": "Synthetic test data"},
+  "gemini_response": {"text": "Synthetic test response; no official advice"}
+}
