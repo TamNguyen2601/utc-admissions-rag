@@ -26,6 +26,8 @@ def admin_client(application):
         token = client.post("/api/v1/auth/login", json=credentials).json()["access_token"]
         client.headers["Authorization"] = f"Bearer {token}"
         application.state.documents.indexer = IndexerStub()
+        # B1 contract explicitly retains the legacy fake extraction/index boundary.
+        application.state.documents.extractor = None
         yield client
 
 

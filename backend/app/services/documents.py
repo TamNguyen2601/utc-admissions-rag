@@ -1,9 +1,10 @@
-"""Document administration with an injectable indexer boundary for checkpoint B1.
+"""Document administration and incremental extraction with an injectable index boundary.
 
-No production extractor/embedding is wired here. Indexer contract: profile: dict,
+Real extraction is injected separately. Indexer contract: profile: dict,
 extract(bytes, media_type) -> text; index(text, metadata) -> None; usable(document)
--> bool. A test stub may implement these; T021/T025–T029 supply real processing.
+-> bool. B2 uses fake indexing; T025–T029 supply chunks, embedding and retrieval.
 """
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -17,6 +18,7 @@ from app.db.base import utc_now
 from app.models.crawl import CrawlRun, CrawlRunItem
 from app.models.knowledge import DataSource, Document, DocumentOrigin
 from app.services.sources import require_usable, validate_source_url
+from app.services.extraction import ExtractionError
 
 MAX_UPLOAD = 20 * 1024 * 1024
 MEDIA = {"application/pdf": ".pdf", "text/plain": ".txt", "image/png": ".png", "image/jpeg": ".jpg"}
@@ -99,10 +101,18 @@ def file_path(upload_dir: Path, origin_id: str, media_type: str) -> Path:
     return upload_dir / (str(UUID(origin_id)) + MEDIA[media_type])
 
 
+@dataclass(frozen=True)
+class IngestionOutcome:
+    outcome: str
+    document_id: str | None
+    reason: str | None = None
+
+
 class DocumentService:
-    def __init__(self, database, upload_dir, publish_lock, indexer=None):
+    def __init__(self, database, upload_dir, publish_lock, indexer=None, *, extractor=None):
         self.database, self.upload_dir = database, upload_dir
         self.publish_lock, self.indexer = publish_lock, indexer
+        self.extractor = extractor
 
     def accept_upload(self, payload, data: bytes, media_type: str):
         origin_id = str(uuid4())
@@ -132,100 +142,149 @@ class DocumentService:
             raise
 
     def process_upload(self, run_id: str, origin_id: str, document_id: str, media_type: str):
-        started = utc_now()
-        outcome, reason, result_id = "error", None, document_id
-        source_id, url = None, None
+        started, source_id, url = utc_now(), None, None
         try:
             with self.database.session() as db:
-                doc = get_document(db, document_id)
                 origin = db.get(DocumentOrigin, origin_id)
                 if origin is None or origin.document_id != document_id:
                     raise HTTPException(404)
                 source_id, url = origin.source_id, origin.canonical_url
-                require_usable(db.get(DataSource, source_id))
-                profile = self.indexer.profile if self.indexer else None
-                old_context = doc.context_key
+            data = file_path(self.upload_dir, origin_id, media_type).read_bytes()
+            result = self._process_origin(origin_id, document_id, data, media_type)
+        except Exception:
+            result = self._failure(document_id, "PROCESSING_FAILED")
+        self.record_item(run_id, 1, source_id, url, result, started)
+        return result
+
+    def process_web(self, source_id, url, data, media_type, payload, *, deadline=None):
+        """Process already fetched, authorized bytes; web identity never selects uploads."""
+        with self.publish_lock, self.database.session() as db:
+            source = db.get(DataSource, source_id)
+            url = validate_source_url(source, url)
+            origin = db.scalar(select(DocumentOrigin).where(DocumentOrigin.source_id == source_id,
+                DocumentOrigin.canonical_url == url, DocumentOrigin.origin_kind == "web"))
+            if origin is None:
+                doc = Document(title=payload.title, context_key=context_key(payload),
+                    **{key: getattr(payload, key) for key in ("year", "campus", "major_code", "method")})
+                db.add(doc); db.flush()
+                origin = DocumentOrigin(document_id=doc.id, source_id=source_id, origin_kind="web",
+                    canonical_url=url, original_url=getattr(payload, "original_url", url),
+                    publisher=getattr(payload, "publisher", None), published_at=getattr(payload, "published_at", None))
+                db.add(origin); db.flush()
+            origin_id, document_id = origin.id, origin.document_id
+            db.commit()
+        return self._process_origin(origin_id, document_id, data, media_type, payload, deadline=deadline)
+
+    def _profile(self):
+        return dict(self.indexer.profile) | (self.extractor.profile if self.extractor else {})
+
+    def _process_origin(self, origin_id, document_id, data, media_type, payload=None, *, deadline=None):
+        try:
+            with self.database.session() as db:
+                current = get_document(db, document_id)
+                origin = db.get(DocumentOrigin, origin_id)
+                if origin is None or origin.document_id != document_id:
+                    raise HTTPException(404)
+                require_usable(db.get(DataSource, origin.source_id))
                 if self.indexer is None:
-                    reason = "INDEXER_NOT_IMPLEMENTED"
-                    doc.quality_reason = reason
+                    current.quality_reason = "INDEXER_NOT_IMPLEMENTED"
                     db.commit()
-                    outcome = "skipped"
-                else:
-                    # Stage all expensive work outside the publish mutex/DB transaction.
-                    doc_metadata = metadata(db, doc)
-            if self.indexer is not None:
-                data = file_path(self.upload_dir, origin_id, media_type).read_bytes()
-                text = normalized_text(self.indexer.extract(data, media_type))
-                if not text:
-                    raise ValueError("Empty extracted text")
-                content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                    return IngestionOutcome("skipped", document_id, "INDEXER_NOT_IMPLEMENTED")
+                profile = self._profile()
+                staged_metadata = metadata(db, current)
+                target_context = context_key(payload) if payload else current.context_key
+                if payload:
+                    staged_metadata.update({key: getattr(payload, key) for key in
+                        ("title", "year", "campus", "major_code", "method")})
                 raw_hash = hashlib.sha256(data).hexdigest()
-                with self.database.session() as db:
-                    duplicate = db.scalar(select(Document).where(Document.content_hash == content_hash,
-                                                                Document.context_key == old_context))
-                    unchanged = duplicate is not None and duplicate.state == "ready" and duplicate.index_profile == profile
-                if not unchanged:
-                    self.indexer.index(text, doc_metadata)
-                with self.publish_lock, self.database.session() as db:
-                    current = db.get(Document, document_id)
-                    current_origin = db.get(DocumentOrigin, origin_id)
-                    if current is None or current_origin is None:
-                        reason, result_id = "DOCUMENT_REMOVED", None
-                    else:
-                        require_usable(db.get(DataSource, source_id))
-                        had_content = current.content_hash is not None
-                        duplicate = db.scalar(select(Document).where(Document.content_hash == content_hash,
-                                                                    Document.context_key == current.context_key))
-                        if not current.enabled and duplicate is not None and duplicate.id != current.id and duplicate.enabled:
-                            outcome, reason = "skipped", "DISABLED_DUPLICATE"
-                        else:
-                            target = duplicate or current
-                            # An origin update must not mutate the content referenced by other origins.
-                            other_origins = db.scalar(select(exists().where(DocumentOrigin.document_id == current.id,
-                                                                          DocumentOrigin.id != origin_id)))
-                            if duplicate is None and other_origins and current.content_hash is not None:
-                                target = Document(title=current.title, provenance_note=current.provenance_note,
-                                    context_key=current.context_key, enabled=current.enabled,
-                                    **{key: getattr(current, key) for key in ("year", "campus", "major_code", "method")})
-                                db.add(target)
-                                db.flush()
-                            if not unchanged:
-                                target.content_text, target.content_hash = text, content_hash
-                                target.raw_hash = raw_hash
-                                target.index_profile, target.state = profile, "ready"
-                                target.quality_reason, target.last_update_error = None, None
-                                target.updated_at = utc_now()
-                            target.last_checked_at = utc_now()
-                            if target.provenance_note is None:
-                                target.provenance_note = current_origin.provenance_note
-                            current_origin.document_id = target.id
-                            result_id = target.id
-                            outcome = "skipped" if unchanged else ("updated" if had_content else "new")
-                            db.flush()
-                            if target.id != current.id and not other_origins:
-                                db.delete(current)
-                            db.commit()
-        except Exception as exc:
-            outcome = "error"
-            reason = "DOCUMENT_REMOVED" if isinstance(exc, HTTPException) and exc.status_code == 404 else "PROCESSING_FAILED"
+                raw_duplicate = db.scalar(select(Document).where(Document.raw_hash == raw_hash,
+                    Document.context_key == target_context, Document.state == "ready"))
+                raw_unchanged = raw_duplicate is not None and raw_duplicate.index_profile == profile
+                if raw_unchanged:
+                    text, content_hash = raw_duplicate.content_text, raw_duplicate.content_hash
+            if not raw_unchanged:
+                if self.extractor:
+                    extracted = self.extractor.extract(data, media_type, metadata=staged_metadata, deadline=deadline)
+                    text = normalized_text(extracted.text)
+                    staged_metadata["pages"] = extracted.page_metadata()
+                else:
+                    text = normalized_text(self.indexer.extract(data, media_type))
+                if not text:
+                    raise ExtractionError("EMPTY_TEXT")
+                content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            with self.database.session() as db:
+                duplicate = db.scalar(select(Document).where(Document.content_hash == content_hash,
+                    Document.context_key == target_context))
+                unchanged = duplicate is not None and duplicate.state == "ready" and duplicate.index_profile == profile
+                disabled_conflict = not staged_metadata["enabled"] and duplicate is not None and duplicate.id != document_id and duplicate.enabled
+            if not unchanged and not disabled_conflict:
+                # B2 boundary only. Real chunks/vectors and their publication belong to T025-T027.
+                self.indexer.index(text, staged_metadata)
             with self.publish_lock, self.database.session() as db:
                 current = db.get(Document, document_id)
-                if current is None:
-                    result_id = None
-                elif current.state == "ready":
-                    current.last_update_error = reason
-                else:
-                    current.state, current.quality_reason = "error", reason
+                origin = db.get(DocumentOrigin, origin_id)
+                if current is None or origin is None or origin.document_id != document_id:
+                    return IngestionOutcome("error", None, "DOCUMENT_REMOVED")
+                require_usable(db.get(DataSource, origin.source_id))
+                duplicate = db.scalar(select(Document).where(Document.content_hash == content_hash,
+                    Document.context_key == target_context))
+                if not current.enabled and duplicate is not None and duplicate.id != current.id and duplicate.enabled:
+                    current.last_checked_at = utc_now()
+                    db.commit()
+                    return IngestionOutcome("skipped", current.id, "DISABLED_DUPLICATE")
+                had_content = current.content_hash is not None
+                other_origins = db.scalar(select(exists().where(DocumentOrigin.document_id == current.id,
+                                                               DocumentOrigin.id != origin_id)))
+                target = duplicate or current
+                if duplicate is None and had_content and (other_origins or current.context_key != target_context):
+                    target = Document(title=staged_metadata["title"], context_key=target_context,
+                        enabled=current.enabled, provenance_note=origin.provenance_note,
+                        **{key: staged_metadata[key] for key in ("year", "campus", "major_code", "method")})
+                    db.add(target); db.flush()
+                if not unchanged:
+                    target.content_text, target.content_hash = text, content_hash
+                    target.index_profile, target.state = profile, "ready"
+                    target.quality_reason, target.last_update_error = None, None
+                    target.updated_at = utc_now()
+                target.raw_hash, target.last_checked_at = raw_hash, utc_now()
+                target.last_update_error = None
+                if target.provenance_note is None:
+                    target.provenance_note = origin.provenance_note
+                origin.document_id, origin.retrieved_at = target.id, utc_now()
+                origin.active = True
+                db.flush()
+                if target.id != current.id and not other_origins:
+                    db.delete(current)
                 db.commit()
-        finally:
-            with self.publish_lock, self.database.session() as db:
-                if result_id and db.get(Document, result_id) is None:
-                    result_id = None
-                db.add(CrawlRunItem(run_id=run_id, item_index=1, source_id=source_id, canonical_url=url,
-                    document_id=result_id, outcome=outcome, reason=reason, started_at=started, ended_at=utc_now()))
-                run = db.get(CrawlRun, run_id)
-                setattr(run, outcome + "_count", getattr(run, outcome + "_count") + 1)
-                db.commit()
+                return IngestionOutcome("skipped" if unchanged else ("updated" if had_content else "new"), target.id)
+        except Exception as exc:
+            reason = exc.reason if isinstance(exc, ExtractionError) else (
+                "DOCUMENT_REMOVED" if isinstance(exc, HTTPException) and exc.status_code == 404 else "PROCESSING_FAILED")
+            return self._failure(document_id, reason, quarantined=isinstance(exc, ExtractionError) and exc.quarantined)
+
+    def _failure(self, document_id, reason, *, quarantined=False):
+        with self.publish_lock, self.database.session() as db:
+            current = db.get(Document, document_id)
+            if current is None:
+                return IngestionOutcome("error", None, "DOCUMENT_REMOVED")
+            if current.state == "ready":
+                current.last_update_error = reason
+            else:
+                current.state = "quarantined" if quarantined else "error"
+                current.quality_reason = reason
+            current.last_checked_at = utc_now()
+            db.commit()
+        return IngestionOutcome("error", document_id, reason)
+
+    def record_item(self, run_id, item_index, source_id, url, result, started):
+        with self.publish_lock, self.database.session() as db:
+            identity = result.document_id if result.document_id and db.get(Document, result.document_id) else None
+            db.add(CrawlRunItem(run_id=run_id, item_index=item_index, source_id=source_id, canonical_url=url,
+                document_id=identity, outcome=result.outcome, reason=result.reason, started_at=started, ended_at=utc_now()))
+            run = db.get(CrawlRun, run_id)
+            field = result.outcome + "_count"
+            setattr(run, field, getattr(run, field) + 1)
+            db.commit()
 
     def set_enabled(self, identity: str, enabled: bool):
         with self.publish_lock, self.database.session() as db:

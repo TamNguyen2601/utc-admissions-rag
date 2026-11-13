@@ -10,3 +10,26 @@ Smoke E5 tải thật phải chạy riêng bằng `tests/smoke/check_e5.py --dow
 Fixtures `fake_clock`, `fake_network`, `fake_encoder`, `fake_gemini`, `fake_ocr`
 cung cấp đồng hồ/transport/đầu ra giả lập; encoder và Gemini chưa có service để
 tích hợp tại T007. Chúng không thay nghiệm thu E5 thật, Gemini live hoặc pipeline.
+
+## Fixtures T020–T024 (B2)
+
+`utc/` chứa HTML trang danh sách, phân trang, bài viết, robots.txt, PDF native hai
+trang, PDF bảng có/thiếu header, PDF scan và ảnh PNG. Toàn bộ là **GIẢ LẬP — KHÔNG
+PHẢI THÔNG TIN UTC**, được tạo tại máy, không tải từ website. Tái tạo PDF/ảnh bằng
+`python tests/fixtures/build_ingestion.py` từ backend với môi trường đã lock.
+
+Test dùng BeautifulSoup/PyMuPDF thật, SQLite trong tmp_path, HTTP/DNS giả lập,
+Tesseract subprocess giả lập TSV và indexer spy. Chúng kiểm cả 90/30, timeout,
+missing language data, quarantine và numeric_eligible=false cho OCR, nhưng không
+thay smoke Tesseract vie+eng thật hoặc embedding/retrieval T025 trở đi.
+
+Smoke OCR thật chạy riêng từ `backend/` sau khi cài Tesseract và cấu hình `.env`:
+
+```powershell
+uv run --locked --offline python tests/smoke/check_ocr.py --output tests/smoke/ocr-local.json
+```
+
+Script tạo ảnh/PDF tiếng Việt GIẢ LẬP bằng font Arial local (đổi bằng `--font`),
+gọi Tesseract thật qua Extractor và kiểm native, PNG, PDF scan, ảnh trống bị cách ly.
+OCR đạt gate vẫn numeric_eligible=false. Script không nằm trong pytest mặc định;
+`ocr-local.json` là bằng chứng chạy trên máy, không phải kết quả giả lập.

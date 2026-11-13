@@ -1,0 +1,41 @@
+{
+  "synthetic_only": true,
+  "ocr_available": true,
+  "cases": [
+    {
+      "name": "vietnamese_native_pdf",
+      "status": "pass",
+      "extraction_kind": "native",
+      "numeric_eligible": true,
+      "characters": 108,
+      "elapsed_seconds": 0.005,
+      "mean_confidence": null
+    },
+    {
+      "name": "vietnamese_png",
+      "status": "pass",
+      "extraction_kind": "ocr",
+      "numeric_eligible": false,
+      "characters": 108,
+      "elapsed_seconds": 0.348,
+      "mean_confidence": 95.61522792307693
+    },
+    {
+      "name": "vietnamese_scan_pdf",
+      "status": "pass",
+      "extraction_kind": "ocr",
+      "numeric_eligible": false,
+      "characters": 108,
+      "elapsed_seconds": 0.352,
+      "mean_confidence": 95.52947792307693
+    },
+    {
+      "name": "blank_png",
+      "status": "pass",
+      "reason": "OCR_LOW_QUALITY",
+      "quarantined": true
+    }
+  ],
+  "version": "tesseract v5.5.3.20260724",
+  "status": "pass"
+}

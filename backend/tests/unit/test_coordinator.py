@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.db.session import Database
 from app.models.crawl import CrawlRun
 from app.services.coordinator import Coordinator, RunInProgress
+from tests.ingestion_support import ingestion
 
 
 def test_busy_does_not_hold_mutex_or_queue_work(settings):
@@ -71,3 +72,34 @@ def test_stop_clears_slot(settings):
     with db.session() as session:
         assert session.get(CrawlRun, run.id).state == "cancelled"
     db.dispose()
+
+
+def test_b2_extraction_does_not_hold_publish_or_coordinator_lock(ingestion):
+    from types import SimpleNamespace
+    source, documents, coordinator = ingestion
+    entered, release = Event(), Event()
+    original = documents.extractor.extract
+    def blocked(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+    documents.extractor.extract = blocked
+    run = coordinator.claim("manual")
+    payload = SimpleNamespace(title="SYNTHETIC", year=None, campus=None, major_code=None, method=None)
+    def pipeline(_):
+        result = documents.process_web(source.id, "https://tuyensinh.utc.edu.vn/a",
+            b"SYNTHETIC blocked extraction description", "text/plain", payload)
+        assert result.outcome == "new"
+    with ThreadPoolExecutor() as pool:
+        worker = pool.submit(coordinator.execute, run.id, pipeline)
+        assert entered.wait(5)
+        try:
+            assert documents.publish_lock.acquire(blocking=False)
+            documents.publish_lock.release()
+            skipped = pool.submit(coordinator.claim, "scheduled").result(timeout=3)
+            assert skipped.state == "skipped_busy"
+            with pytest.raises(RunInProgress): coordinator.claim("manual")
+        finally:
+            release.set()
+        worker.result(timeout=5)
+    assert coordinator.active_run_id is None
