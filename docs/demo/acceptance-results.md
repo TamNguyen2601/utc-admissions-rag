@@ -393,3 +393,55 @@ Dependencies/lockfiles giữ nguyên. Ignore hiện có bao phủ Python/Node/en
 không có Docker/lint/publish/infra cần ignore riêng.
 
 **Dừng sau T012. Checkpoint A: PASS. T013–T070 chưa triển khai. Demo: NOT READY.**
+
+## Bản ghi T013–T019 — Documents / Checkpoint B1
+
+Ngày: **2026-11-13**, múi giờ **Asia/Ho_Chi_Minh (UTC+07:00)**.
+Phạm vi lần triển khai này chỉ T013–T019. Người dùng đã xác nhận tiếp tục dù checklist
+trước demo còn 5 mục chưa đánh dấu; checklist giữ nguyên. Đã đọc Constitution, Spec,
+Plan, Architecture, Data Model, REST, Tasks, Testing, Research và Quickstart.
+Không có `.specify/extensions.yml` ở lần kiểm tra trước/sau, không có hook cần chạy.
+Ignore hiện có đáp ứng Python/Node/env/data/cache; không thêm dependencies/lockfiles,
+Docker, công cụ lint, npm publish hoặc hạ tầng mới.
+
+| Task | Kết quả thực tế tại checkpoint B1 |
+| --- | --- |
+| T013 | PASS: data_sources/documents/document_origins, SHA256 raw/text, context ổn định có marker null; hash/context partial unique, URL unique riêng web, nhiều upload origins UUID độc lập và note riêng. FK source RESTRICT, document→origins CASCADE. Chỉ kiểm bảng đã có, không đòi đủ13bảng. |
+| T014 | PASS: crawl_runs/crawl_run_items, enum/counts/item_index constraints, URL trùng/null vẫn có log riêng. skipped_busy chỉ scheduled, started_at null, ended_at=created_at, counts0/source_outcomes=[], DB trigger chặn items. Run delete cascade items; document delete SET NULL trên item. |
+| T015 | PASS: một slot active_run_id với mutex ngắn; pipeline ngoài mutex. Event giữ pipeline, manual/upload busy409 không tạo run, scheduled busy ghi terminal ngay. Nhả slot khi hoàn tất/lỗi/stop; không chạy lại lượt đã bỏ, kể cả khi gọi execute với ID skipped_busy. Lỗi source dùng field status theo REST. Chưa tạo scheduler/run routes của T049–T051. |
+| T016 | PASS: source registry unknown/allowed/denied, reuse_basis/checked_at, robots/terms cho web, interval>=2. HTTPS/host/path allowlist, bỏ fragment/tracking nhưng giữ query năm; kiểm private IP qua DNS giả lập và URL redirect đích. career/upload/catalog import-only. Chưa có HTTP fetch/adapter thật; transport, redirect loop và thực thi robots/rate thuộc T020+. |
+| T017 | PASS với indexer stub: nhận upload, chuẩn hóa note NFC/trim, dedup text/context/profile, giữ origins/note đầu, thay đổi context tách doc, unchanged gọi index0. Disabled giữ flag qua reuse/update/split, collision với doc enabled bỏ qua DISABLED_DUPLICATE. Update lỗi giữ bản ready cũ; nguồn mất quyền lúc staging không publish; document bị xóa lúc staging không tái tạo. Enable chỉ ready và indexer xác nhận usable; delete xóa document/origins/file thật, không lưu dấu chặn. |
+| T018 | PASS contract: Admin source create/list/patch và document upload/list/search/filter/detail/original/disable/enable/delete. Upload202 receipt có run_id/origin_id/document_id và Location; file lưu bằng UUID, tên client không quyết định đường dẫn. Guest401/USER403, original chỉ Admin. Public source hiện trả410 cho document tồn tại và404 nếu đã xóa; không công bố note/file path/stub text. Implementation excerpts đầy đủ vẫn ở T028. |
+| T019 | PASS: contract-stub dùng SQLite file tạm, reopen engine giữ origins/notes; note1/2000 và quá2000/rỗng, cùng bytes/URL khác note/context, partial unique web; 20MiB được nhận, 20MiB+1 bị413, MIME/magic sai415; schema extra/duplicate multipart422; RBAC và privacy. Không có dữ liệu UTC thật trong fixture. |
+
+Lệnh chạy từ `backend/` (Python3.13, uv/lockfile hiện có):
+
+```powershell
+uv run --locked pytest -q
+```
+
+**Kết quả cuối: 188 passed in 24.25s**, toàn suite backend mặc định offline
+(smoke setup/Foundation/auth và unit/contract B1). `git diff --check` PASS.
+Lượt đầu test database fail collection vì model chưa tồn tại; sau implementation pass.
+Contract source list ban đầu lệch định dạng timestamp, đã dùng response DTO thống nhất.
+Lượt toàn suite đầu có 2 failure do Foundation giả định chỉ có hai bảng auth; đã cập nhật
+hai assertion để kiểm đúng **7 bảng hiện hành**, giữ kiểm tra fixture isolation và health
+embedding_ready=false. Các lượt cuối không còn failure.
+
+Indexer test nằm tại `tests/contract/knowledge_support.py`, ghi nhãn
+**GIẢ LẬP — KHÔNG PHẢI THÔNG TIN UTC**; không tải/gọi E5, OCR, Gemini hoặc website thật.
+`DocumentService.indexer` là điểm tiêm stub; stub chỉ cho phép nghiệm thu contract và
+quy tắc quản lý dữ liệu. Ứng dụng mặc định không gắn indexer: upload được lưu ở **pending**,
+quality_reason/item reason **INDEXER_NOT_IMPLEMENTED**, item skipped, content_hash và
+index_profile null. HTTP202 chỉ xác nhận tiếp nhận, không xác nhận đã index hoặc dùng RAG.
+Receipt có thể chứa ID document pending đã được merge; kết quả liên kết đọc theo origin/run item.
+API đọc runs/items/polling vẫn chưa triển khai (T049); không gọi chúng là API đã hoạt động.
+
+Disable giữ dữ liệu và enabled=false. Delete xóa thật tài liệu và file/origins; nếu nguồn
+website còn tài liệu, một lượt crawl mới sau khi crawler được triển khai **có thể nhập lại**.
+Không có blacklist/blocklist hoặc record ngăn tái nhập. Chunks/jobs/majors chưa tồn tại;
+cascade toàn hệ thống và source excerpts sẽ nghiệm thu ở các checkpoint sau dependency.
+Không tuyên bố đã nghiệm thu ingestion→embedding→retrieval hoặc RAG thật.
+
+**Dừng sau T019. Checkpoint B1: PASS (indexer stub). T020–T070 chưa triển khai.
+Demo/RAG: NOT READY. Không commit/push/merge.**

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from threading import Lock
 
 from fastapi import FastAPI
 
@@ -8,6 +9,8 @@ from app.core.config import Settings, get_settings
 from app.core.errors import EnvelopeCORSMiddleware, ExceptionBoundaryMiddleware, register_error_handlers
 from app.core.logging import RequestMetadataMiddleware, configure_logging
 from app.db.session import Database
+from app.services.coordinator import Coordinator
+from app.services.documents import DocumentService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -24,6 +27,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception:
                 raise RuntimeError("Backend initialization failed; check local configuration.") from None
             application.state.database = database
+            application.state.knowledge_lock = Lock()
+            application.state.coordinator = Coordinator(database)
+            application.state.documents = DocumentService(database, config.upload_dir,
+                                                         application.state.knowledge_lock)
             application.state.embedding_ready = False
             application.state.ocr_available = probe_ocr(config)
             yield

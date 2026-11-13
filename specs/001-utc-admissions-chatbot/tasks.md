@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T012 đã triển khai và nghiệm thu setup/smoke/Foundation/auth; dừng sau T012, T013 trở đi chưa triển khai.
-**Bằng chứng**: [Kết quả thực tế T001–T012](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T019 đã triển khai đến checkpoint B1; documents/sources dùng indexer stub trong contract tests, chưa nghiệm thu embedding/RAG. Dừng sau T019; T020 trở đi chưa triển khai.
+**Bằng chứng**: [Kết quả thực tế T001–T019](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -77,37 +77,37 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 3. Quản lý tài liệu — checkpoint B1
 
-- [ ] T013 [Database/knowledge] [US2] documents/origins, hash/context unique và web URL partial unique; upload UUID riêng; enabled độc lập state.
+- [x] T013 [Database/knowledge] [US2] documents/origins, hash/context unique và web URL partial unique; upload UUID riêng; enabled độc lập state.
   - File: `backend/app/models/knowledge.py`.
   - Phụ thuộc: T005, T007; coverage: FR-009 FR-010 FR-011 FR-013 FR-032.
   - Nghiệm thu: Chỉ data_sources/documents/document_origins và FK đã có ở T013: hash/context unique, web URL partial unique, document→origins cascade, provenance/UUID. Không đòi chunks(T025), jobs(T038), majors(T043) hoặc đủ13bảng; schema/cascade đầy đủ nghiệm thu T062.
 
-- [ ] T014 [Database/run] [US7] runs/items có created_at và terminal skipped_busy; started_at nullable chỉ khi lượt lịch bị bỏ.
+- [x] T014 [Database/run] [US7] runs/items có created_at và terminal skipped_busy; started_at nullable chỉ khi lượt lịch bị bỏ.
   - File: `backend/app/models/crawl.py`.
   - Phụ thuộc: T013; coverage: FR-016 FR-021.
   - Nghiệm thu: URL trùng/sai vẫn log theo item_index; skipped_busy trigger scheduled, startnull/end=created/counts0/items0, ràng buộc item_index đúng.
 
-- [ ] T015 [Crawler/coordinator] [US7] Coordinator active_run_id + Lock chỉ chuyển trạng thái ngắn; claim/nhả trước pipeline; cron busy ghi skipped_busy rồi trả.
+- [x] T015 [Crawler/coordinator] [US7] Coordinator active_run_id + Lock chỉ chuyển trạng thái ngắn; claim/nhả trước pipeline; cron busy ghi skipped_busy rồi trả.
   - File: `backend/app/services/coordinator.py`.
   - Phụ thuộc: T014; coverage: FR-019 FR-020 FR-021.
   - Nghiệm thu: Không giữ mutex qua network/OCR/embedding/join/publish; một pipeline, manual busy409; xong/lỗi/stop clear slot, không tự start lượt khác hoặc acquire lặp/deadlock.
 
-- [ ] T016 [Admin/source] [US2] Registry nguồn allowed/unknown/denied, kind career import-only bên cạnh utc/topcv; robots/terms/reuse/rate, URL canonical/allowlist/redirect/private-IP gate.
+- [x] T016 [Admin/source] [US2] Registry nguồn allowed/unknown/denied, kind career import-only bên cạnh utc/topcv; robots/terms/reuse/rate, URL canonical/allowlist/redirect/private-IP gate.
   - File: `backend/app/services/sources.py`.
   - Phụ thuộc: T013, T010; coverage: FR-014.
   - Nghiệm thu: Unknown không enable/fetch/import, HTTPS/host/path đúng, tracking bỏ nhưng query năm giữ; requests chỉ dùng URL đã kiểm.
 
-- [ ] T017 [Admin/document] [US2] Upload20MiB tự xử lý/index, origin UUID/provenance; CRUD/search/disable/enable/delete vật lý.
+- [x] T017 [Admin/document] [US2] Upload20MiB tự xử lý/index, origin UUID/provenance; CRUD/search/disable/enable/delete vật lý.
   - File: `backend/app/services/documents.py`, `backend/app/schemas/document.py`.
   - Phụ thuộc: T013, T016; coverage: FR-007 FR-010 FR-032.
   - Nghiệm thu: Disabled giữ flag qua update/merge; enable chỉready usable; delete cascade, website còn có thể nhập lại; không unique sai note.
 
-- [ ] T018 [Admin/API] [US2] Routes documents/sources theo REST, upload202 có origin_id UUID qua coordinator; metadata origin_kind/notes, original chỉ Admin.
+- [x] T018 [Admin/API] [US2] Routes documents/sources theo REST, upload202 có origin_id UUID qua coordinator; metadata origin_kind/notes, original chỉ Admin.
   - File: `backend/app/api/routes/admin.py`, `backend/app/api/routes/documents.py`.
   - Phụ thuộc: T010, T015, T016, T017; coverage: FR-007 FR-009 FR-010 FR-032.
   - Nghiệm thu: Contract có thể inject indexer stub, không gọi success ingest thực trước T027; public source implementation đầy đủ tại T028.
 
-- [ ] T019 [Test/admin contract] [US2] Test schema/role/limits/note/public privacy với indexer stub; upload nhiều provenance/cùngURL kháccontext, partial unique web và reopen DB.
+- [x] T019 [Test/admin contract] [US2] Test schema/role/limits/note/public privacy với indexer stub; upload nhiều provenance/cùngURL kháccontext, partial unique web và reopen DB.
   - File: `backend/tests/contract/test_documents.py`, `backend/tests/contract/test_sources.py`.
   - Phụ thuộc: T018; coverage: FR-007 FR-010 FR-011 FR-014 FR-028 FR-032 SC-003 SC-004.
   - Nghiệm thu: Role/limits/provenance qua restart đúng; disable giữ enabled=false, enable/delete API đúng; indexer stub, chưa nghiệm thu embedding. Checkpoint B1.
