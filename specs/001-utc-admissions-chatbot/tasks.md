@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T048 đã triển khai đến checkpoint E2 offline. Catalogue/quiz/scoring/API và jobs/scope dùng catalogue SQLite thật trong test, nguồn ngành/encoder được giả lập có nhãn. Toàn bộ pytest: **633 passed in 81.18s**; T043–T048 bổ sung119 ca, gồm M1 S1–S6/Q18–Q20 và các biên. CLI kiểm nguồn/hash/mapping và thay catalogue atomic; không nạp fixture vào kho thật. E5 CPU smoke đã PASS riêng ở checkpoint C. T049–T070 chưa làm; catalogue demo thật T067, TopCV/Gemini live và demo SC-010 chưa nghiệm thu.
-**Bằng chứng**: [Kết quả thực tế T001–T048](../../docs/demo/acceptance-results.md), [hướng dẫn catalogue CLI](../../docs/catalogue-import.md).
+**Trạng thái**: T001–T051 đã triển khai đến checkpoint F offline. APScheduler00:00 Asia/Ho_Chi_Minh và Admin run API dùng chung coordinator/pipeline; fake clock kiểm busy/skipped_busy/stop/rerun/restart và giữ dữ liệu. Toàn bộ pytest: **662 passed in 87.60s** =633 cũ +29 mới T049–T051. Catalogue/quiz/scoring/API và jobs/scope dùng catalogue SQLite thật trong test; HTTP/OCR/encoder giả lập có nhãn, không nạp fixture vào kho thật. E5 CPU smoke đã PASS riêng ở checkpoint C. T052–T070 chưa làm; catalogue demo thật T067, TopCV/Gemini live và demo SC-010 chưa nghiệm thu.
+**Bằng chứng**: [Kết quả thực tế T001–T051](../../docs/demo/acceptance-results.md), [vận hành Admin runs](../../docs/admin-runs.md), [hướng dẫn catalogue CLI](../../docs/catalogue-import.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -275,17 +275,17 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 10. Scheduler — checkpoint F
 
-- [ ] T049 [Scheduler] [US7] APScheduler00:00VN cố định, manual không reset; busy ghi skipped_busy, rảnh dùng chung pipeline.
+- [X] T049 [Scheduler] [US7] APScheduler00:00VN cố định, manual không reset; busy ghi skipped_busy, rảnh dùng chung pipeline.
   - File: `backend/app/services/scheduler.py`, `backend/app/main.py`, `backend/app/services/coordinator.py`.
   - Phụ thuộc: T015, T027, T039, T040, T048; coverage: FR-019 FR-020 FR-021.
   - Nghiệm thu: Manual10:00 không đổi00:00ngày sau; cron busy bỏ lượt không tự retry khi rảnh/restart; log khác failed, last_success không tăng; backend tắt không chạy bù.
 
-- [ ] T050 [Admin/run API] [US7] Admin Crawl ngay nền202/run_id, busy409; list/detail/items/stop có terminal skipped_busy.
+- [X] T050 [Admin/run API] [US7] Admin Crawl ngay nền202/run_id, busy409; list/detail/items/stop có terminal skipped_busy.
   - File: `backend/app/api/routes/admin.py`, `backend/app/schemas/crawl.py`.
   - Phụ thuộc: T010, T049; coverage: FR-019 FR-020 FR-021.
   - Nghiệm thu: ADMIN thực/Guest401/USER403, HTTP không đợi crawl; skipped_busy counts0/startnull/items0; stop terminal idempotent, không dừng run khác.
 
-- [ ] T051 [Test/scheduler] [US7] Fakeclock cron/manual/upload/import cùngslot, skipped_busy, stop/rerun/restart giữ dữ liệu cũ.
+- [X] T051 [Test/scheduler] [US7] Fakeclock cron/manual/upload/import cùngslot, skipped_busy, stop/rerun/restart giữ dữ liệu cũ.
   - File: `backend/tests/contract/test_runs.py`, `backend/tests/integration/test_scheduler.py`.
   - Phụ thuộc: T050, T029, T042; coverage: FR-019 FR-020 FR-021 SC-007.
   - Nghiệm thu: Event giữ manual tại network/OCR/embedding: cron ghi skipped_busy trước nhả Event; max pipeline1, manual409; nhả slot/restart không chạy lượt bỏ, ngày sau00:00 rảnh chạy; skipbusy counters0/items0 không failed, stop sauitem/rerun ID mới, lỗi giữ cũ.

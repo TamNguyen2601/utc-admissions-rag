@@ -1,10 +1,10 @@
 # Kết quả nghiệm thu thực tế
 
-**Hiện tại: T001–T037 PASS đến checkpoint D với fixtures offline; lịch sử riêng,
-ownership, atomic message pair, nguồn và deadline đã kiểm bằng SQLite thật.
-Toàn bộ pytest: 435 passed. Dừng sau T037; T038+ chưa triển khai.
+**Hiện tại: T001–T051 PASS đến checkpoint F với fixtures offline; scheduler và Admin
+run API dùng chung coordinator/pipeline, fake clock/stop/rerun/restart đã kiểm bằng SQLite thật.
+Toàn bộ pytest: 662 passed in 87.60s. Dừng sau T051; T052+ chưa triển khai.
 Gemini live chưa nghiệm thu; demo SC-010: NOT READY.**
-Bản ghi T035–T037 ở cuối file là kết quả mới nhất. Các phần trước là lịch sử
+Bản ghi T049–T051 ở cuối file là kết quả mới nhất. Các phần trước là lịch sử
 nghiệm thu, giữ nguyên các giới hạn tại thời điểm chạy.
 
 ## Bản ghi T001–T003
@@ -827,3 +827,40 @@ dừng, không thêm khóa liên tiến trình ngoài kiến trúc một backend
 không commit/push/merge, không sửa checklist. Catalogue/quiz demo thật T067 chưa nạp;
 kho thiếu dữ liệu hợp lệ vẫn trả data_missing. Không nghiệm thu TopCV/Gemini live,
 E5/OCR smoke mới hoặc demo SC-010; demo vẫn NOT READY.**
+
+## Bản ghi T049–T051 — checkpoint F
+
+Ngày **2026-11-13**, múi giờ **Asia/Ho_Chi_Minh**. Chỉ triển khai T049–T051.
+Người dùng đã xác nhận tiếp tục dù còn 5 mục checklist cổng trước demo; giữ nguyên checklist.
+
+| Task | Kết quả và bằng chứng |
+| --- | --- |
+| T049 | PASS: AsyncIOScheduler/APScheduler3, MemoryJobStore, CronTrigger00:00 Asia/Ho_Chi_Minh, id daily-crawl, max_instances1/coalesce true/grace60. Callback claim slot rồi dispatch nền cùng CrawlService; manual không reschedule. Busy cron ghi skipped_busy ngay, không queue/retry/catch-up. UTC/TopCV dùng service cũ; career/upload/catalog ghi skipped/import-only. Item_index liên tục giữa nguồn; lỗi nguồn trước không đánh nhầm TopCV sau. |
+| T050 | PASS: POST /api/v1/admin/runs trả202/run_id/Location khi pipeline còn chặn bằng Event; busy409 RUN_IN_PROGRESS không thêm run. List/detail/items phân trang/schema đúng, đủ nullable/counts/source_outcomes/skipped_busy; stop active và terminal idempotent, không dừng ID mới. Guest401/USER403 bằng auth thật. Manual/upload/job_import/scheduled chia sẻ một slot. |
+| T051 | PASS:29 test mới gồm15 integration fake clock và14 contract/lifecycle. Clock đi qua BaseScheduler/CronTrigger/MemoryJobStore thật, không chờ ngày thật. Cron busy khi network/extraction/OCR/embedding bị chặn vẫn ghi log trước nhả Event; max pipeline1, không chạy lượt bỏ sau nhả/restart; ngày sau rảnh vẫn chạy. Stop trong network/embedding hoàn tất item hiện tại, giữ commit/chunks, không xử lý item tiếp; rerun ID mới quét từ đầu. Reopen SQLite giữ text/hash/vector/origin/enabled=false, startup đổi running/stop_requested thành interrupted, không tự chạy bù. Shutdown chờ item, từ chối claim mới; lỗi start thread nhả slot; lỗi update giữ bản tốt; log không raw exception/path/key. |
+
+Lệnh thực tế từ `backend/`:
+
+```powershell
+uv run --locked --offline pytest tests/contract/test_runs.py -q --maxfail=1
+uv run --locked --offline pytest tests/integration/test_scheduler.py tests/contract/test_runs.py -q
+uv run --locked --offline pytest -q
+```
+
+TDD contract ban đầu fail do chưa có app.state.crawl. Sau triển khai,28 test mới
+PASS in5.11s; sau đó bổ sung stop ngay trong network thành29 test mới.
+Lượt regression đầu647 passed/1 failed do test foundation cũ đòi chưa có scheduler;
+đã đổi sang kiểm scheduler đang chạy và đúng một job. Lượt cuối sau mọi sửa code:
+**662 passed in87.60s** =633 cũ +29 mới; không skipped/xfailed. `git diff --check`: PASS.
+uv dùng quyền cache cục bộ ngoài workspace đã được cấp; test dùng `--locked --offline`.
+
+SQLite file tạm, auth/RBAC, coordinator, scheduler decisions, extraction/chunk/index/publish
+là thật. HTTP, OCR subprocess và encoder/tokenizer **GIẢ LẬP**, không gọi nguồn live,
+không nạp dữ liệu vào database demo. Timer/executor APScheduler trong integration được
+điều khiển trực tiếp bằng fake clock; lifespan production AsyncIOScheduler được kiểm riêng.
+Không kiểm nhiều process hoặc crash subprocess vì kiến trúc local một process/worker.
+
+Hướng dẫn API và vận hành một worker: [admin-runs.md](../admin-runs.md).
+T049–T051 đã đánh [X]; T052–T070 giữ chưa triển khai. Không thêm dependency/queue,
+không sửa checklist/constitution, không commit/push/merge. Không nghiệm thu lại E5 CPU,
+nguồn UTC/TopCV/Gemini live, giao diện hoặc demo SC-010; demo vẫn NOT READY.

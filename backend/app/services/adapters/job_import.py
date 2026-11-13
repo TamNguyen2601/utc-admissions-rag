@@ -73,7 +73,10 @@ class JobImportAdapter:
     def run(self, run_id, rows, default_source_id=None, *, record_sources=True):
         from app.services.jobs import JobRowError
         jobs, seen, sources = self.jobs, {}, {}
-        for index, raw in enumerate(rows, 1):
+        with jobs.database.session() as db:
+            run = db.get(CrawlRun, run_id)
+            offset = run.new_count + run.updated_count + run.skipped_count + run.error_count
+        for index, raw in enumerate(rows, offset + 1):
             if jobs.coordinator.should_stop(run_id):
                 break
             started, source_id, url = jobs.now(), None, None
@@ -94,14 +97,8 @@ class JobImportAdapter:
             if source_id:
                 sources[source_id] = sources.get(source_id, False) or result.outcome == 'error'
         if record_sources:
-            with jobs.database.session() as db:
-                run = db.get(CrawlRun, run_id)
+            for identity, error in sources.items():
                 stopped = jobs.coordinator.should_stop(run_id)
-                run.source_outcomes_json = [dict(source_id=identity,
-                    status='stopped' if stopped else 'error' if error else 'success',
-                    message='STOP_REQUESTED' if stopped else 'ROW_ERRORS' if error else None)
-                    for identity, error in sources.items()]
-                for identity, error in sources.items():
-                    if not stopped and not error:
-                        db.get(DataSource, identity).last_success_at = jobs.now()
-                db.commit()
+                jobs.coordinator.record_source(run_id, identity,
+                    'stopped' if stopped else 'error' if error else 'success',
+                    'STOP_REQUESTED' if stopped else 'ROW_ERRORS' if error else None)

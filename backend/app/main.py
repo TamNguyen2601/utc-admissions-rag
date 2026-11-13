@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 from threading import Lock
 
 from fastapi import FastAPI
@@ -19,6 +20,8 @@ from app.services.chat import ChatService
 from app.services.conversations import ConversationService
 from app.services.jobs import JobService
 from app.services.recommendation import RecommendationService
+from app.services.crawl import CrawlService
+from app.services.scheduler import CrawlScheduler
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -29,6 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(application: FastAPI):
         database = None
         gemini = None
+        scheduler = None
+        coordinator = None
         try:
             try:
                 database = Database(config)
@@ -38,12 +43,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.database = database
             application.state.knowledge_lock = Lock()
             application.state.coordinator = Coordinator(database)
+            coordinator = application.state.coordinator
+            coordinator.recover_interrupted()
             application.state.encoder = EmbeddingService.local(config)
             application.state.documents = DocumentService(database, config.upload_dir,
                 application.state.knowledge_lock, Indexer(database, application.state.encoder), extractor=Extractor(config))
             application.state.recommendation = RecommendationService(database)
             application.state.jobs = JobService(database, application.state.documents, application.state.coordinator,
                                                 resolver=application.state.recommendation)
+            application.state.crawl = CrawlService(database, application.state.documents, coordinator,
+                                                   jobs=application.state.jobs)
             application.state.retrieval = RetrievalService(database, application.state.encoder,
                 application.state.documents._profile(), application.state.knowledge_lock,
                 config.retrieval_min_similarity)
@@ -54,8 +63,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                                   catalogue_resolver=application.state.recommendation.resolves_scope,
                                                   conversations=application.state.conversations)
             application.state.ocr_available = probe_ocr(config)
+            scheduler = CrawlScheduler(coordinator, application.state.crawl)
+            application.state.scheduler = scheduler
+            scheduler.start()
             yield
         finally:
+            if scheduler is not None:
+                scheduler.shutdown()
+            if coordinator is not None:
+                await asyncio.to_thread(coordinator.close)
             if gemini is not None:
                 await gemini.close()
             if database is not None:

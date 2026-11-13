@@ -266,7 +266,8 @@ def test_health_without_key_and_no_domain_services(application, fake_ocr, fake_e
             "crawl_runs", "crawl_run_items", "document_chunks", "conversations", "messages",
             "job_postings", "majors", "quiz_questions",
         }
-        assert not hasattr(application.state, "scheduler")
+        assert application.state.scheduler.scheduler.running
+        assert len(application.state.scheduler.scheduler.get_jobs()) == 1
     fake_ocr.assert_called_once()
     fake_encoder.encode.assert_not_called()
     fake_gemini.assert_not_called()
