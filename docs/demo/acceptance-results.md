@@ -1,9 +1,10 @@
 # Kết quả nghiệm thu thực tế
 
-**Hiện tại: T001–T024 PASS đến checkpoint B2 với fixtures offline/indexer fake,
-đã bổ sung smoke OCR Tesseract thật vie+eng.
-Dừng sau T024; T025+ chưa triển khai. Demo/RAG: NOT READY.**
-Bản ghi T020–T024 ở cuối file là kết quả mới nhất. Các phần trước là lịch sử
+**Hiện tại: T001–T037 PASS đến checkpoint D với fixtures offline; lịch sử riêng,
+ownership, atomic message pair, nguồn và deadline đã kiểm bằng SQLite thật.
+Toàn bộ pytest: 435 passed. Dừng sau T037; T038+ chưa triển khai.
+Gemini live chưa nghiệm thu; demo SC-010: NOT READY.**
+Bản ghi T035–T037 ở cuối file là kết quả mới nhất. Các phần trước là lịch sử
 nghiệm thu, giữ nguyên các giới hạn tại thời điểm chạy.
 
 ## Bản ghi T001–T003
@@ -676,3 +677,46 @@ owner/conversation busy và atomic message pair dành cho T035–T037, chưa tri
 **T030–T034 đã đánh [X], checkpoint D1 PASS offline. T035–T070 giữ nguyên chưa làm.
 Không tạo dữ liệu tuyển sinh cho database thật; không commit/push/merge. Demo SC-010
 chưa đạt và Gemini live chưa nghiệm thu.**
+
+## Bản ghi T035–T037 — checkpoint D
+
+Ngày: **2026-11-13**, múi giờ **Asia/Ho_Chi_Minh (UTC+07:00)**.
+Chỉ triển khai lịch sử backend T035–T037; không triển khai T038+ hoặc frontend T052+.
+Đã đọc Spec Kit, data model, REST contract, architecture/testing và source Gemini Chat
+T030–T034. Người dùng đã xác nhận tiếp tục dù checklist requirements còn 5 mục chưa
+đánh dấu; giữ nguyên checklist. Không có `.specify/extensions.yml` nên không có
+before/after implement hooks. Ignore hiện có đủ cho stack, không thêm dependency.
+
+| Task | Kết quả và bằng chứng |
+| --- | --- |
+| T035 | PASS: thêm conversations owner/title/next_seq và messages với seq unique, turn_id, sender/status constraints, cascade khi xóa conversation. Lưu citation snapshot độc lập document/chunk, không cascade mất lịch sử. Owner filter áp dụng cả ADMIN; title trim1..100, mặc định Hội thoại mới. Guard một request ghi/hội thoại; mutex chỉ giữ khi claim/release, không qua Gemini/CPU. |
+| T036 | PASS: create/list/open/messages/continue/rename/delete theo REST, pagination và schema đóng. Sai owner404 kể cả ADMIN; Guest/invalid/revoked Bearer401; cùng conversation409 CONVERSATION_BUSY. Handler async duy nhất finalize và commit cặp user/assistant, kiểm lại session/nguồn/deadline; lỗi rollback cả cặp và next_seq. Reply200 nghiệp vụ giữ đúng status. Khi đọc lịch sử, available được tính lại từ doc/chunk/hash/nguồn hiện hành, không ghi ngược snapshot. Context lấy tối đa10 tin/16000 ký tự; excerpt mỗi tin tối đa4000, giữ toàn bộ content trong history. Snapshot và assistant cũ không là evidence mới. |
+| T037 | PASS: thêm54 ca =11 unit +12 contract +31 integration. Kiểm USER A/B/ADMIN trên mọi owner endpoint, revoked token, title0/1/100/101, seq/turn pair/cascade/rollback, busy, restart, nguồn đổi/disable/delete/permission/hash/chunk, Guest không mutation/log, quota/key/service/SDKtimeout/outertimeout, CPU và Gemini muộn, session logout/expired/inactive trong lúc chờ và expiry trước commit. |
+
+Lệnh thực tế từ `backend/`:
+
+```powershell
+uv run --locked pytest -q --tb=short
+```
+
+Kết quả cuối: **435 passed in 46.35s** =381 ca cũ +54 ca mới. `git diff --check`: PASS.
+Hai test nền tảng liệt kê schema cố định đã được cập nhật thêm conversations/messages;
+giữ kiểm init idempotent và metadata fixture cách ly. Các test history mới đều PASS.
+Kiểm cả trạng thái DB ngay sau504 và sau CPU kết thúc muộn; không thêm message,
+không tăng sequence hoặc cập nhật timestamp bởi request đã timeout. Request mới vẫn
+lưu được cặp tin đúng thứ tự khi CPU cũ còn chạy. Output Gemini sai lưu Reply200
+insufficient_evidence, không thành answered; HTTP lỗi không lưu cặp nào.
+
+SQLite file tạm, auth, ingestion/chunking, retrieval, history và app restart là thật;
+encoder xác định được và Gemini stub thay cho model/network trong integration.
+Adapter thiếu key được kiểm bằng service thật, không gọi mạng. Suite cũ vẫn bao gồm
+google-genai thật với HTTP giả lập. Không dùng key thật, không gọi Gemini live, không
+nạp fixture vào kho demo, không chạy lại smoke E5/OCR riêng hay frontend build.
+
+Giới hạn giữ theo plan: một process/worker, khóa hội thoại trong RAM; transaction SQLite
+ngắn có overhead, không cam kết ngắt commit đúng mili giây. Kiểm deadline trước flush
+và commit; CPU chỉ trả dữ liệu, không callback ghi hoặc cơ chế hủy CPU. Lịch sử không
+thay golden review/narrative live hoặc kiểm hiệu năng T064–T065.
+
+**T035–T037 đã đánh [X], checkpoint D PASS offline. T038–T070 chưa làm.
+Không commit/push/merge; không sửa frontend hoặc checklist. Demo SC-010 vẫn NOT READY.**

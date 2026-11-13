@@ -16,6 +16,7 @@ from app.services.embedding import EmbeddingService, Indexer
 from app.services.retrieval import RetrievalService
 from app.services.gemini import GeminiService
 from app.services.chat import ChatService
+from app.services.conversations import ConversationService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -43,7 +44,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config.retrieval_min_similarity)
             gemini = GeminiService(config)
             application.state.gemini = gemini
-            application.state.chat = ChatService(application.state.retrieval, gemini, config)
+            application.state.conversations = ConversationService(database, application.state.retrieval)
+            application.state.chat = ChatService(application.state.retrieval, gemini, config,
+                                                  conversations=application.state.conversations)
             application.state.ocr_available = probe_ocr(config)
             yield
         finally:

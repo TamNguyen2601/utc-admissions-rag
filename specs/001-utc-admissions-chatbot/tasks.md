@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T034 đã triển khai đến checkpoint D1; chat Guest/scope/evidence/Gemini adapter/API được kiểm bằng SQLite tạm, encoder xác định được và Gemini stub/SDK MockTransport. E5 CPU smoke riêng đã PASS ở checkpoint C. Dừng sau T034; T035+ và lịch sử chat chưa triển khai, chưa nghiệm thu Gemini live hoặc demo.
-**Bằng chứng**: [Kết quả thực tế T001–T034](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T037 đã triển khai đến checkpoint D; chat và lịch sử riêng được kiểm bằng SQLite tạm, encoder xác định được và Gemini stub/SDK MockTransport. Toàn bộ pytest: 435 passed; T035–T037 bổ sung 54 ca. E5 CPU smoke riêng đã PASS ở checkpoint C. Dừng sau T037; T038+ chưa triển khai, chưa nghiệm thu Gemini live hoặc demo.
+**Bằng chứng**: [Kết quả thực tế T001–T037](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -196,20 +196,21 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 7. Lịch sử hội thoại — checkpoint D
 
-- [ ] T035 [Database/history] [US4] Owner CRUD, messages seq/turn pair, title, source snapshot, một request/hội thoại.
+- [X] T035 [Database/history] [US4] Owner CRUD, messages seq/turn pair, title, source snapshot, một request/hội thoại.
   - File: `backend/app/models/conversation.py`, `backend/app/services/conversations.py`.
   - Phụ thuộc: T012, T033; coverage: FR-030 FR-031.
   - Nghiệm thu: Unit owner/seq/rename/delete cascade, chỉ handler gọi lưu cặp tin; recheck session/deadline trước transaction, HTTP lỗi không cặp tin mồ côi.
 
-- [ ] T036 [History/API] [US4] Gắn account chat vào async orchestrator, owner trước đọc; chỉ handler chưa timeout commit cặp200 đúng status, source available khi xem.
+- [X] T036 [History/API] [US4] Gắn account chat vào async orchestrator, owner trước đọc; chỉ handler chưa timeout commit cặp200 đúng status, source available khi xem.
   - File: `backend/app/api/routes/conversations.py`, `backend/app/schemas/conversation.py`.
   - Phụ thuộc: T035; coverage: FR-028 FR-030 FR-031.
   - Nghiệm thu: 404 mọi thao tác trên hội thoại người khác kể cả ADMIN;409busy; expired session không ghi; old snapshots không làm evidence.
 
-- [ ] T037 [Test/history] [US4] Hai USER/ADMIN, quota/SDKtimeout/outertimeout account, cho CPU stub trả muộn, title boundaries, source đổi/xóa/logout.
+- [X] T037 [Test/history] [US4] Hai USER/ADMIN, quota/SDKtimeout/outertimeout account, cho CPU stub trả muộn, title boundaries, source đổi/xóa/logout.
   - File: `backend/tests/contract/test_history.py`, `backend/tests/integration/test_history.py`.
   - Phụ thuộc: T034, T036; coverage: FR-028 FR-029 FR-030 FR-031 SC-004.
   - Nghiệm thu: Sau timeout và sau stub trả muộn đều không thêm messages/answered; quota/key không leak; thiếunguồn đúngstatus, Guest/privacy/ownership/source pass. Checkpoint D.
+  - Bằng chứng: `tests/unit/test_conversations.py` (11 ca), `tests/contract/test_history.py` (12 ca), `tests/integration/test_history.py` (31 ca); toàn bộ `uv run --locked pytest -q --tb=short`: **435 passed in 46.35s**. SQLite/auth/ingestion/retrieval thật; encoder/Gemini giả lập, không Gemini live.
 
 ## 8. Thông tin nghề nghiệp — checkpoint E1
 
