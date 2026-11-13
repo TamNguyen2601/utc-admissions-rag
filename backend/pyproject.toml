@@ -1,0 +1,39 @@
+[project]
+name = "utc-admissions-backend"
+version = "0.1.0"
+description = "Local UTC admissions RAG chatbot backend"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+    "sqlalchemy>=2.0,<3",
+    "pydantic-settings>=2.7,<3",
+    "pyjwt>=2.10,<3",
+    "pwdlib[argon2]>=0.2,<1",
+    "python-multipart>=0.0.20,<1",
+    "sentence-transformers>=3.4,<6",
+    "torch>=2.6,<3",
+    "numpy>=2.2,<3",
+    "google-genai>=1.0,<2",
+    "requests>=2.32,<3",
+    "beautifulsoup4>=4.13,<5",
+    "pymupdf>=1.25,<2",
+    "apscheduler>=3.11,<4",
+    "tzdata>=2025.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "httpx>=0.28,<1"]
+
+# Prevent a Linux/Windows install from pulling CUDA runtime packages.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
