@@ -720,3 +720,49 @@ thay golden review/narrative live hoặc kiểm hiệu năng T064–T065.
 
 **T035–T037 đã đánh [X], checkpoint D PASS offline. T038–T070 chưa làm.
 Không commit/push/merge; không sửa frontend hoặc checklist. Demo SC-010 vẫn NOT READY.**
+
+## Bản ghi T038–T042 — checkpoint E1
+
+Ngày: **2026-11-13**, múi giờ **Asia/Ho_Chi_Minh (UTC+07:00)**.
+Chỉ triển khai nghề nghiệp backend T038–T042. Đã đọc đầy đủ spec/plan/tasks,
+data model, REST, architecture/testing, research/quickstart và constitution.
+Người dùng xác nhận tiếp tục dù requirements checklist còn5 mục chưa đánh dấu;
+giữ nguyên checklist. Ignore hiện có đủ cho stack; không thêm dependency.
+Không có `.specify/extensions.yml` khi kiểm trước và sau triển khai nên không có hooks.
+
+| Task | Kết quả và bằng chứng |
+| --- | --- |
+| T038 | PASS: `job_postings` có source/identity/origin, UNIQUE(source_id,identity_key), FK source RESTRICT/origin CASCADE và index deadline/group. Source trên job được kiểm khớp origin. Document/origin bị xóa cascade jobs. Init chỉ bổ sung bảng còn thiếu; tests SQLite reopen giữ jobs/provenance. |
+| T039 | PASS offline: TopCV adapter chỉ được gọi tường minh, kiểm allowed/enabled/reuse/checked/robots/terms/host trước fetch và kiểm lại quyền. Dùng SafeFetcher chung với UTC: HTTPS/IP pinning, allowlist/redirect/robots, timeout5/20s, rate tối thiểu2s hoặc crawl-delay cao hơn; 403/CAPTCHA dừng, 429 lưu Retry-After, không bypass. Chỉ hỗ trợ JobPosting JSON-LD trong HTML; JS-only/markup không hỗ trợ ghi lỗi nguồn. Không nghiệm thu TopCV live. |
+| T040 | PASS Q16/U1/U2: UTF-8 CSV/JSON <=20MiB/5000 logical records; sai cấu trúc từ chối trước tạo run, lỗi dòng vẫn log theo item_index và giữ dòng đúng. Row/default source_id phải là publisher thật trong registry allowed, URL trong scope. Normalize NFC/whitespace/URL/UTC, snapshot optional, unknown status mặc định; collected/posted tương lai lỗi dòng. First-valid-wins; cùng payload skipped, khác payload conflict, sameURL khác external_id identity_conflict trước ghi origin/job. Mỗi dòng publish job+origin/document/chunks trong một transaction; stage/SQL lỗi rollback riêng dòng, không mất bản tốt hoặc dòng đã commit. |
+| T041 | PASS: GET /jobs và Admin POST /admin/jobs/import202/Location, RBAC401/403, Bearer sai401, busy409 chung coordinator. Identity ưu tiên ext-ID publisher được khai báo tin cậy, thiếu dùng URL; giữ ext-ID khi row thiếu, nâng url-key, đổiURL cùngID giữ một job. Nguồn/name/collected_at JOIN từng origin, không dùng file container. Status được tính lại tại thời điểm đọc; date-only deadline là cuối ngày Việt Nam. Count từng job.id, độc lập document và pagination/status filter, thiếu trả null khác0. Major/group resolver là interface với stub, chưa nối catalogue T048. |
+| T042 | PASS: thêm79 ca parser/TopCV unit, API contract và SQLite integration. Mixed6rows đúng new/skipped/error(conflict)/updated/skipped/error(identity_conflict), counters1/1/2/2. HaiURL cùngtext thiếuID dùng chung document nhưng có2jobs/2origins/count2. Chỉ observation đổi skipped và giữ updated_at; status đổi updated/encode0. Kiểm invalid-first, ID upgrade/conflict, publisher theo dòng/default, deadline/status/count, disabled giữ flag, cascade, rollback, nguồn bị thu hồi hoặc doc bị xóa lúc staging, public source và DB reopen. Major filter chỉ contract-stub. |
+
+Lệnh thực tế từ `backend/`:
+
+```powershell
+uv run --locked pytest -q tests/unit/test_job_import.py tests/unit/test_topcv.py tests/contract/test_jobs.py tests/integration/test_job_import.py --tb=short
+uv run --locked pytest -q --tb=short
+```
+
+Kết quả: **79 passed in 13.78s** cho nhóm nghề nghiệp; lượt cuối toàn bộ
+**514 passed in 58.87s** =435 ca cũ +79 ca mới. `git diff --check`: PASS.
+TDD ban đầu fail collection vì chưa có model career. Trong quá trình triển khai,
+đã sửa assertion cascade để đọc DB thay vì ORM cache và cập nhật hai test nền tảng
+liệt kê schema thêm job_postings; giữ kiểm init idempotent/fixture metadata cách ly.
+Lượt cuối bao gồm validation multipart có source_id kèm extra field trả422.
+uv cần quyền truy cập cache ngoài workspace; đã chạy với quyền được cấp.
+
+SQLite file tạm, auth, job import, chunking/index publish và public source là thật;
+encoder xác định được thay E5 và TopCV dùng transport HTTP giả lập, suite offline.
+Không nạp fixture vào database thật, không crawl TopCV thật, không dùng key/mạng thật.
+Không chạy lại smoke E5/OCR, Gemini live, frontend build hoặc demo trong phạm vi này.
+
+Giới hạn: resolver mặc định không tạo ngành/mã nhóm giả; contract inject stub cho
+major/group filters, integration catalogue thật dành cho T048. API đọc run/items
+thuộc T050 chưa triển khai; import đã ghi đầy đủ run/items/counters vào SQLite và
+tests kiểm trực tiếp các bản ghi này. Adapter TopCV chưa nối scheduler/manual run API
+(T049–T050), không có auto-crawl. Quyền/HTML của TopCV thật chưa được nghiệm thu.
+
+**T038–T042 đã đánh [X], checkpoint E1 PASS offline. T043–T070 giữ nguyên chưa làm.
+Không commit/push/merge; không sửa frontend hoặc checklist. Demo SC-010 vẫn NOT READY.**

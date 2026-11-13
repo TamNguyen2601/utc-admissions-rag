@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T037 đã triển khai đến checkpoint D; chat và lịch sử riêng được kiểm bằng SQLite tạm, encoder xác định được và Gemini stub/SDK MockTransport. Toàn bộ pytest: 435 passed; T035–T037 bổ sung 54 ca. E5 CPU smoke riêng đã PASS ở checkpoint C. Dừng sau T037; T038+ chưa triển khai, chưa nghiệm thu Gemini live hoặc demo.
-**Bằng chứng**: [Kết quả thực tế T001–T037](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T042 đã triển khai đến checkpoint E1; jobs/import/status/count được kiểm bằng SQLite tạm, encoder xác định được và HTTP TopCV giả lập. Toàn bộ pytest: 514 passed; T038–T042 bổ sung 79 ca. Major filter chỉ kiểm contract với resolver stub, chưa nối catalogue thật (T048). E5 CPU smoke riêng đã PASS ở checkpoint C. Dừng sau T042; T043+ chưa triển khai, chưa nghiệm thu TopCV/Gemini live hoặc demo.
+**Bằng chứng**: [Kết quả thực tế T001–T042](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -214,30 +214,31 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 8. Thông tin nghề nghiệp — checkpoint E1
 
-- [ ] T038 [Database/career] [US6] Job model source_id/identity_key/origin_id, unique source+key; cascade khi doc/origin xóa.
+- [X] T038 [Database/career] [US6] Job model source_id/identity_key/origin_id, unique source+key; cascade khi doc/origin xóa.
   - File: `backend/app/models/career.py`.
   - Phụ thuộc: T013, T014; coverage: FR-015 FR-017 FR-018.
   - Nghiệm thu: UNIQUE(source_id,identity_key), fallbackURL/nângID đúng; cùng source/URL khác external_id báo identity_conflict trước ghi, không đổi job/origin khác; shared doc không gộpjob.
 
-- [ ] T039 [Crawler/TopCV] [US6] Adapter khi allowed, mỗi tin đúng origin; HTML không hỗ trợ/403/CAPTCHA/unknown dừng,429backoff.
+- [X] T039 [Crawler/TopCV] [US6] Adapter khi allowed, mỗi tin đúng origin; HTML không hỗ trợ/403/CAPTCHA/unknown dừng,429backoff.
   - File: `backend/app/services/adapters/topcv.py`.
   - Phụ thuộc: T020, T027, T038; coverage: FR-014 FR-015.
   - Nghiệm thu: Mock cấm không fetch, source lỗi giữ cũ; không phụ thuộc TopCV live cho nghiệm thu.
 
-- [ ] T040 [Crawler/job import] [US6] CSV/JSON20MiB/5000records, publisher row/default, normalize payload; first-valid-wins, so DB cho new/updated/skipped, row conflict/error.
+- [X] T040 [Crawler/job import] [US6] CSV/JSON20MiB/5000records, publisher row/default, normalize payload; first-valid-wins, so DB cho new/updated/skipped, row conflict/error.
   - File: `backend/app/services/adapters/job_import.py`.
   - Phụ thuộc: T015, T027, T038; coverage: FR-015 FR-016.
   - Nghiệm thu: U1/U2 theo data-model: cùngidentity/payload skipped, đổi nghiệp vụ soDB updated, file mâu thuẫn conflict; sameURL khácID identity_conflict trướcghi; observation-only không updated, không thêm last_seen_at, log/counters đủ.
 
-- [ ] T041 [Career/API] [US6] GETjobs/import202, origin JOIN, status/time, COUNT job.id theo identity, major filter interface.
+- [X] T041 [Career/API] [US6] GETjobs/import202, origin JOIN, status/time, COUNT job.id theo identity, major filter interface.
   - File: `backend/app/services/jobs.py`, `backend/app/schemas/career.py`, `backend/app/api/routes/jobs.py`, `backend/app/api/routes/admin.py`.
   - Phụ thuộc: T038, T039, T040; coverage: FR-015 FR-017 FR-018.
   - Nghiệm thu: HaiURL cùngtext khôngID→2jobs/count2; sameexternalID đổiURL→1; không gộp theo document; filter major có thể contractstub.
 
-- [ ] T042 [Test/career] [US6] Nghiệm thu import/status/origin/count; contract major_id với stub resolver.
+- [X] T042 [Test/career] [US6] Nghiệm thu import/status/origin/count; contract major_id với stub resolver.
   - File: `backend/tests/contract/test_jobs.py`, `backend/tests/integration/test_job_import.py`.
   - Phụ thuộc: T041; coverage: FR-014 FR-015 FR-016 FR-017 FR-018 SC-006.
   - Nghiệm thu: Q16/Q17/U1-U2 pass: new/update/skip, first-valid-wins/invalidfirst, conflict vs identity_conflict không đổi origin khác, observation-only skipped, status-only updated/encode0; mixed6rows counts1new/1updated/2skipped/2error; majorfilter stub. Checkpoint E1.
+  - Bằng chứng: thêm79 ca trong `tests/unit/test_job_import.py`, `tests/unit/test_topcv.py`, `tests/contract/test_jobs.py`, `tests/integration/test_job_import.py`; toàn bộ `uv run --locked pytest -q --tb=short`: **514 passed in 58.87s**. SQLite/auth/chunking/index/public source thật với encoder xác định được; TopCV chỉ HTTP giả lập; major filter chỉ resolver stub. Chi tiết trong báo cáo nghiệm thu.
 
 ## 9. Quiz và gợi ý ngành — checkpoint E2
 

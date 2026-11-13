@@ -17,6 +17,7 @@ from app.services.retrieval import RetrievalService
 from app.services.gemini import GeminiService
 from app.services.chat import ChatService
 from app.services.conversations import ConversationService
+from app.services.jobs import JobService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.encoder = EmbeddingService.local(config)
             application.state.documents = DocumentService(database, config.upload_dir,
                 application.state.knowledge_lock, Indexer(database, application.state.encoder), extractor=Extractor(config))
+            application.state.jobs = JobService(database, application.state.documents, application.state.coordinator)
             application.state.retrieval = RetrievalService(database, application.state.encoder,
                 application.state.documents._profile(), application.state.knowledge_lock,
                 config.retrieval_min_similarity)
