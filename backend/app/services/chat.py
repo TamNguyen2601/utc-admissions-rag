@@ -5,7 +5,8 @@ from fastapi import HTTPException
 
 from app.db.base import utc_now
 from app.models.identity import AuthSession, User
-from app.schemas.chat import Reply
+from app.schemas.chat import GuestChatInput, Reply
+from app.schemas.conversation import ConversationReply
 from app.services.evidence import citations, gate, validate_output
 from app.services.gemini import ChatError
 from app.services.scope import classify
@@ -22,14 +23,26 @@ MESSAGES = {
 
 
 class ChatService:
-    def __init__(self, retrieval, gemini, settings, *, catalogue_resolver=None):
+    def __init__(self, retrieval, gemini, settings, *, catalogue_resolver=None, conversations=None):
         self.retrieval, self.gemini, self.settings = retrieval, gemini, settings
         self.catalogue_resolver = catalogue_resolver
+        self.conversations = conversations
 
     @staticmethod
     def check_deadline(expires_at):
         if asyncio.get_running_loop().time() >= expires_at:
             raise ChatError(504, 'REQUEST_DEADLINE_EXCEEDED')
+
+    @staticmethod
+    def check_identity(db, identity):
+        if identity is None:
+            return
+        session = db.get(AuthSession, identity.session.id)
+        user = db.get(User, identity.user.id)
+        if (session is None or user is None or not user.active
+                or session.user_id != user.id or session.revoked_at is not None
+                or session.expires_at <= utc_now()):
+            raise HTTPException(401)
 
     def _retrieve(self, query, context):
         # A thread owns its own Sessions. It cannot finalize, send or persist messages.
@@ -37,7 +50,7 @@ class ChatService:
         hits = [hit for hit in hits if self.retrieval.available(hit)]
         return hits, self.retrieval.has_knowledge()
 
-    async def _finalize(self, reply, selected, identity, expires_at):
+    async def _finalize(self, reply, selected, identity, expires_at, *, conversation_id=None, message=None):
         # Never block the event loop on a held threading.Lock or leave a late lock worker.
         lock = self.retrieval.publish_lock
         while not lock.acquire(blocking=False):
@@ -45,26 +58,36 @@ class ChatService:
         try:
             self.check_deadline(expires_at)
             with self.retrieval.database.session() as db:
-                if identity is not None:
-                    session = db.get(AuthSession, identity.session.id)
-                    user = db.get(User, identity.user.id)
-                    if (session is None or user is None or not user.active
-                            or session.user_id != user.id or session.revoked_at is not None
-                            or session.expires_at <= utc_now()):
-                        raise HTTPException(401)
+                self.check_identity(db, identity)
                 if any(not self.retrieval.available_in_session(db, hit) for hit in selected):
                     reply = reply.model_copy(update={'status': 'insufficient_evidence',
                         'text': MESSAGES['insufficient_evidence'], 'citations': []})
-                # T035+ will add account history here. Guest never writes to DB.
                 self.check_deadline(expires_at)
+                if conversation_id is not None:
+                    user_message_id, assistant_message_id = self.conversations.add_pair(
+                        db, conversation_id, identity.user.id, message, reply)
+                    result = ConversationReply(user_message_id=user_message_id,
+                                               assistant_message_id=assistant_message_id, reply=reply)
+                    # Flush holds SQLite's writer lock; also reject wall-clock session
+                    # expiry during the short transaction, before its explicit commit.
+                    self.check_identity(db, identity)
+                    self.check_deadline(expires_at)
+                    db.commit()
+                    return result
                 return reply
         finally:
             lock.release()
 
-    async def reply(self, payload, request_id, identity=None):
+    async def reply(self, payload, request_id, identity=None, *, conversation_id=None):
         expires_at = asyncio.get_running_loop().time() + self.settings.chat_deadline_seconds
         try:
             async with asyncio.timeout_at(expires_at):
+                if conversation_id is not None:
+                    if identity is None:
+                        raise HTTPException(401)
+                    turns = self.conversations.turns(conversation_id, identity.user.id)
+                    payload = GuestChatInput(message=payload.message, context=payload.context, turns=turns)
+                    self.check_deadline(expires_at)
                 scope = classify(payload, self.catalogue_resolver)
                 status, selected, missing, text = scope.status, [], scope.missing_fields, ''
                 if scope.status == 'retrieve':
@@ -89,6 +112,7 @@ class ChatService:
                     text += '\nTôi chỉ trả lời phần liên quan UTC; phần ngoài phạm vi chưa được hỗ trợ.'
                 reply = Reply(status=status, text=text, citations=citations(selected), context=scope.context,
                               missing_fields=missing, request_id=request_id)
-                return await self._finalize(reply, selected, identity, expires_at)
+                return await self._finalize(reply, selected, identity, expires_at,
+                                            conversation_id=conversation_id, message=payload.message)
         except TimeoutError:
             raise ChatError(504, 'REQUEST_DEADLINE_EXCEEDED') from None
