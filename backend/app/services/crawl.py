@@ -1,6 +1,6 @@
 """Permission-gated UTC transport and offline-testable crawl orchestration.
 
-Nothing starts crawling at import/startup. Scheduler/API wiring belongs to later tasks.
+Nothing starts crawling at import/startup; manual and cron share this orchestration.
 """
 from dataclasses import dataclass
 from datetime import timedelta
@@ -184,10 +184,11 @@ class SafeFetcher:
 
 
 class CrawlService:
-    def __init__(self, database, documents, coordinator, *, fetcher=None):
+    def __init__(self, database, documents, coordinator, *, fetcher=None, jobs=None):
         self.database, self.documents, self.coordinator = database, documents, coordinator
         self.fetcher = fetcher or SafeFetcher()
         self.fetcher.reload_source, self.fetcher.on_retry = self._load_source, self._retry
+        self.jobs = jobs
 
     def _load_source(self, identity):
         with self.database.session() as db:
@@ -203,14 +204,25 @@ class CrawlService:
     def run(self, run_id, source_ids=None):
         from app.services.adapters.utc import UTCAdapter
         with self.database.session() as db:
-            query = select(DataSource).where(DataSource.kind == "utc")
+            query = select(DataSource).where(DataSource.enabled.is_(True), DataSource.permission_status == 'allowed')
             if source_ids is not None:
                 query = query.where(DataSource.id.in_(source_ids))
             sources = db.scalars(query.order_by(DataSource.id)).all()
-        index = 0
         for source in sources:
             if self.coordinator.should_stop(run_id):
                 break
+            if source.kind not in {'utc', 'topcv'}:
+                self.coordinator.record_source(run_id, source.id, 'skipped', 'import-only')
+                continue
+            if source.kind == 'topcv':
+                from app.services.adapters.topcv import TopCVAdapter
+                if self.jobs is None:
+                    raise RuntimeError('Job service required for TopCV crawl')
+                TopCVAdapter(self.jobs, fetcher=self.fetcher).run(run_id, source.id)
+                continue
+            with self.database.session() as db:
+                run = db.get(CrawlRun, run_id)
+                index = run.new_count + run.updated_count + run.skipped_count + run.error_count
             status, reason = "success", None
             try:
                 adapter = UTCAdapter(self.fetcher)
@@ -229,11 +241,4 @@ class CrawlService:
             except Exception as exc:
                 status = "error"
                 reason = exc.reason if isinstance(exc, CrawlError) else "SOURCE_FAILED"
-            with self.database.session() as db:
-                run = db.get(CrawlRun, run_id)
-                run.source_outcomes_json = [*run.source_outcomes_json,
-                    {"source_id": source.id, "status": status, "message": reason}]
-                current_source = db.get(DataSource, source.id)
-                if status == "success" and current_source:
-                    current_source.last_success_at = utc_now()
-                db.commit()
+            self.coordinator.record_source(run_id, source.id, status, reason)

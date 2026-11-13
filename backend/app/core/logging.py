@@ -14,6 +14,24 @@ logger = logging.getLogger("utc_admissions")
 
 class SafeMetadataFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        event = getattr(record, 'run_event', None)
+        if event in {'claimed', 'skipped_busy', 'stop_requested', 'finished', 'interrupted'}:
+            try:
+                run_id = str(UUID(record.run_id))
+            except (ValueError, TypeError, AttributeError):
+                run_id = ''
+            trigger = getattr(record, 'trigger', '')
+            state = getattr(record, 'run_state', '')
+            counts = getattr(record, 'counts', {})
+            return json.dumps(dict(event='run_' + event, run_id=run_id,
+                trigger=trigger if trigger in {'manual', 'scheduled', 'upload', 'job_import'} else '',
+                state=state if state in {'running', 'stop_requested', 'cancelled', 'succeeded',
+                    'partial', 'failed', 'interrupted', 'skipped_busy'} else '',
+                counts={key: value if type(value) is int and value >= 0 else 0
+                        for key in ('new', 'updated', 'skipped', 'error')
+                        for value in [counts.get(key, 0)]}))
+        if record.msg == 'scheduler_unavailable':
+            return json.dumps({'event': 'scheduler_unavailable'})
         try:
             request_id = str(UUID(getattr(record, "request_id", "")))
         except (ValueError, TypeError, AttributeError):

@@ -1,4 +1,4 @@
-"""Admin source registry, checkpoint T018. Run endpoints arrive at T049."""
+"""Admin sources, imports and the single shared crawl run slot."""
 from typing import Annotated
 from uuid import UUID
 
@@ -17,6 +17,9 @@ from app.services.sources import patch_source, save_source, source_response
 from app.services.adapters.job_import import parse_import
 from app.services.documents import MAX_UPLOAD
 from app.schemas.career import RunAccepted
+from app.schemas.crawl import RunInput, RunResponse, RunItemResponse, run_response
+from app.models.crawl import CrawlRun, CrawlRunItem
+from app.services.sources import require_usable
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 DB = Annotated[Session, Depends(get_session)]
@@ -28,6 +31,50 @@ def paginated(db, query, page, page_size, serialize):
     total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
     rows = db.scalars(query.offset((page - 1) * page_size).limit(page_size)).all()
     return {"items": [serialize(row) for row in rows], "total": total, "page": page, "page_size": page_size}
+
+
+def get_run(db, identity):
+    run = db.get(CrawlRun, str(identity))
+    if run is None:
+        raise HTTPException(404)
+    return run
+
+
+@router.post('/runs', status_code=202, response_model=RunAccepted)
+def start_run(payload: RunInput, request: Request, db: DB, identity=Depends(require_admin)):
+    source_id = str(payload.source_id) if payload.source_id else None
+    if source_id:
+        require_usable(db.get(DataSource, source_id))
+    coordinator = request.app.state.coordinator
+    crawl = request.app.state.crawl
+    run = coordinator.claim('manual', source_id, identity.user.id)
+    coordinator.start(run.id, lambda run_id: crawl.run(
+        run_id, [source_id] if source_id else None))
+    return JSONResponse(status_code=202, content={'run_id': run.id, 'state': 'running'},
+                        headers={'Location': f'/api/v1/admin/runs/{run.id}'})
+
+
+@router.get('/runs', response_model=PageResponse[RunResponse])
+def list_runs(db: DB, page: Page = 1, page_size: PageSize = 20):
+    return paginated(db, select(CrawlRun).order_by(CrawlRun.created_at.desc(), CrawlRun.id.desc()),
+                     page, page_size, run_response)
+
+
+@router.get('/runs/{identity}', response_model=RunResponse)
+def run_detail(identity: UUID, db: DB):
+    return run_response(get_run(db, identity))
+
+
+@router.get('/runs/{identity}/items', response_model=PageResponse[RunItemResponse])
+def run_items(identity: UUID, db: DB, page: Page = 1, page_size: PageSize = 20):
+    get_run(db, identity)
+    return paginated(db, select(CrawlRunItem).where(CrawlRunItem.run_id == str(identity))
+                     .order_by(CrawlRunItem.item_index), page, page_size, RunItemResponse.model_validate)
+
+
+@router.post('/runs/{identity}/stop', response_model=RunResponse)
+def stop_run(identity: UUID, request: Request, actor=Depends(require_admin)):
+    return run_response(request.app.state.coordinator.request_stop(str(identity), actor.user.id))
 
 
 @router.get("/sources", response_model=PageResponse[SourceResponse])

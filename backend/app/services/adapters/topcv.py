@@ -145,23 +145,18 @@ class TopCVAdapter:
 
     def run(self, run_id, source_id):
         status, reason = 'success', None
+        with self.jobs.database.session() as db:
+            errors_before = db.get(CrawlRun, run_id).error_count
         try:
             source = self._load_source(source_id)
             JobImportAdapter(self.jobs).run(run_id,
                 self.discover(source, should_stop=lambda: self.jobs.coordinator.should_stop(run_id)),
                 source_id, record_sources=False)
             with self.jobs.database.session() as db:
-                if db.get(CrawlRun, run_id).error_count:
+                if db.get(CrawlRun, run_id).error_count > errors_before:
                     status, reason = 'error', 'ROW_ERRORS'
             if self.jobs.coordinator.should_stop(run_id):
                 status, reason = 'stopped', 'STOP_REQUESTED'
         except Exception as exc:
             status, reason = 'error', exc.reason if isinstance(exc, CrawlError) else 'SOURCE_FAILED'
-        with self.jobs.database.session() as db:
-            run = db.get(CrawlRun, run_id)
-            run.source_outcomes_json = [*run.source_outcomes_json,
-                dict(source_id=source_id, status=status, message=reason)]
-            source = db.get(DataSource, source_id)
-            if source is not None and status == 'success':
-                source.last_success_at = self.jobs.now()
-            db.commit()
+        self.jobs.coordinator.record_source(run_id, source_id, status, reason)
