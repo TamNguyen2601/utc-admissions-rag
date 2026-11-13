@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T019 đã triển khai đến checkpoint B1; documents/sources dùng indexer stub trong contract tests, chưa nghiệm thu embedding/RAG. Dừng sau T019; T020 trở đi chưa triển khai.
-**Bằng chứng**: [Kết quả thực tế T001–T019](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T024 đã triển khai đến checkpoint B2; UTC/extraction/OCR/hash được kiểm bằng fixtures offline và indexer fake. Chưa nghiệm thu embedding/RAG. Dừng sau T024; T025 trở đi chưa triển khai.
+**Bằng chứng**: [Kết quả thực tế T001–T024](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -114,30 +114,31 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 4. UTC crawler và xử lý PDF/OCR — checkpoint B2
 
-- [ ] T020 [Crawler/UTC] [US2] Discovery HTML/attachments/phân trang UTC đúng quyền; requests5/20s, mininterval, redirect,403/CAPTCHA/429.
+- [x] T020 [Crawler/UTC] [US2] Discovery HTML/attachments/phân trang UTC đúng quyền; requests5/20s, mininterval, redirect,403/CAPTCHA/429.
   - File: `backend/app/services/crawl.py`, `backend/app/services/adapters/utc.py`.
   - Phụ thuộc: T015, T016; coverage: FR-007 FR-014.
   - Nghiệm thu: Unit mock nguồn: không bypass/private fetch, Retry-After đặt retry_not_before; lỗi nguồn không tự xóa dữ liệu.
 
-- [ ] T021 [Extraction] [US2] BeautifulSoup HTML, PyMuPDF native theo trang/bảng, TXT UTF-8, metadata/page và numeric_eligible.
+- [x] T021 [Extraction] [US2] BeautifulSoup HTML, PyMuPDF native theo trang/bảng, TXT UTF-8, metadata/page và numeric_eligible.
   - File: `backend/app/services/extraction.py`.
   - Phụ thuộc: T020; coverage: FR-008 FR-009.
   - Nghiệm thu: Native đọc rõ tự sẵn sàng cho index; bảng mất header/quá200 trang/hỏng có lý do cách ly/lỗi; không suy năm từ ngày đăng.
 
-- [ ] T022 [OCR] [US2] Tesseract CLI vie+eng fallback, TSV confidence>=90/30ký tự,60s/page/5phút item; OCR numeric false.
+- [x] T022 [OCR] [US2] Tesseract CLI vie+eng fallback, TSV confidence>=90/30ký tự,60s/page/5phút item; OCR numeric false.
   - File: `backend/app/services/extraction.py`.
   - Phụ thuộc: T021; coverage: FR-008.
   - Nghiệm thu: Scan tốt mô tả được; ảnh mờ/thiếu tessdata/timeout không dùng evidence; không workflow duyệt trang hoặc tự sửa số.
 
-- [ ] T023 [Ingestion/hash/origin] [US2] Hash/context/profile skip độc lập originUUID; staging giữ cũ khi lỗi, cập nhật giữ enabled=false.
+- [x] T023 [Ingestion/hash/origin] [US2] Hash/context/profile skip độc lập originUUID; staging giữ cũ khi lỗi, cập nhật giữ enabled=false.
   - File: `backend/app/services/crawl.py`, `backend/app/services/documents.py`.
   - Phụ thuộc: T013, T015, T017, T021, T022; coverage: FR-011 FR-012 FR-013.
   - Nghiệm thu: Cùngtext/context/profile encode0; kháccontext tách; giữ disable khi tách/merge origin, không tự bật.
 
-- [ ] T024 [Test/crawler] [US2] Test quyền/HTML/PDF/OCR/URL/hash/multi-origin/counters/source failure với indexer fake, H1 cùngbytes/cùngURL/note/context.
+- [x] T024 [Test/crawler] [US2] Test quyền/HTML/PDF/OCR/URL/hash/multi-origin/counters/source failure với indexer fake, H1 cùngbytes/cùngURL/note/context.
   - File: `backend/tests/unit/test_ingestion.py`, `backend/tests/unit/test_extraction.py`, `backend/tests/unit/test_coordinator.py`.
   - Phụ thuộc: T019, T020, T021, T022, T023; coverage: FR-007 FR-008 FR-009 FR-011 FR-014 FR-016 SC-003.
   - Nghiệm thu: Q03–Q07: origin không nhân document/encode, kháccontext không gộp, disabled giữ flag; extraction/OCR đúng, fakeencoder. Checkpoint B2.
+  - Bằng chứng bổ sung: smoke Tesseract thật vie+eng tại `backend/tests/smoke/check_ocr.py`, kết quả `backend/tests/smoke/ocr-local.json`; native/PNG tiếng Việt/PDF scan/quarantine đều PASS. Báo cáo nghiệm thu ghi chi tiết; embedding vẫn fake theo phạm vi B2.
 
 ## 5. Local embedding và retrieval — checkpoint C
 

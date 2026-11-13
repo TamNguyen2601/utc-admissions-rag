@@ -11,6 +11,7 @@ from app.core.logging import RequestMetadataMiddleware, configure_logging
 from app.db.session import Database
 from app.services.coordinator import Coordinator
 from app.services.documents import DocumentService
+from app.services.extraction import Extractor
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,7 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.knowledge_lock = Lock()
             application.state.coordinator = Coordinator(database)
             application.state.documents = DocumentService(database, config.upload_dir,
-                                                         application.state.knowledge_lock)
+                application.state.knowledge_lock, extractor=Extractor(config))
             application.state.embedding_ready = False
             application.state.ocr_available = probe_ocr(config)
             yield

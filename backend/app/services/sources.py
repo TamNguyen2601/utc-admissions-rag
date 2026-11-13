@@ -1,4 +1,4 @@
-"""Source permissions and URL gates. This checkpoint never fetches a URL."""
+"""Source permissions and URL gates shared by administration and crawler."""
 import ipaddress
 import posixpath
 import re
@@ -106,10 +106,10 @@ def validate_source_url(source, value: str, *, resolve: bool = False) -> str:
 
 
 def checked_fetch_url(source, value: str) -> str:
-    """Future adapters must call before every request AND redirect (auto redirects off).
+    """Validate scope and public DNS before a request or redirect (auto redirects off).
 
     Resolves all addresses to reject private destinations. No requests are issued here;
-    adapter transport/DNS rebinding protection belongs to T020.
+    SafeFetcher additionally pins the checked IP at the transport boundary.
     """
     if source.kind not in FETCH_KINDS:
         raise HTTPException(422)

@@ -1,8 +1,10 @@
 # Kết quả nghiệm thu thực tế
 
-**Hiện tại: T001–T012 PASS; Checkpoint A hoàn tất, dừng sau T012. T013+ chưa triển khai.**
-Kết quả T008–T012 và lệnh tạo Admin ở cuối file. Phần T001–T007 bên dưới
-là bản ghi lịch sử của lượt trước; các giới hạn tại thời điểm đó được giữ nguyên.
+**Hiện tại: T001–T024 PASS đến checkpoint B2 với fixtures offline/indexer fake,
+đã bổ sung smoke OCR Tesseract thật vie+eng.
+Dừng sau T024; T025+ chưa triển khai. Demo/RAG: NOT READY.**
+Bản ghi T020–T024 ở cuối file là kết quả mới nhất. Các phần trước là lịch sử
+nghiệm thu, giữ nguyên các giới hạn tại thời điểm chạy.
 
 ## Bản ghi T001–T003
 
@@ -445,3 +447,95 @@ Không tuyên bố đã nghiệm thu ingestion→embedding→retrieval hoặc RA
 
 **Dừng sau T019. Checkpoint B1: PASS (indexer stub). T020–T070 chưa triển khai.
 Demo/RAG: NOT READY. Không commit/push/merge.**
+
+## Bản ghi T020–T024 — checkpoint B2
+
+Ngày **2026-11-13**, Asia/Ho_Chi_Minh. Phạm vi chỉ T020–T024; đã đọc source,
+spec/plan/architecture/data-model/testing/contracts/research/quickstart và constitution.
+Checklist requirements.md có 30/35 checked, 5 unchecked; người dùng đã xác nhận
+tiếp tục. Không sửa checklist. Không có `.specify/extensions.yml` ở bước kiểm tra
+trước/sau, không có hook để dispatch. Ignore hiện có đáp ứng stack; không thêm
+dependency, không sửa lockfile/schema, không triển khai embedding T025 trở đi.
+
+| Task | Kết quả thực tế |
+| --- | --- |
+| T020 | PASS offline: UTC discovery HTML/phân trang/attachment có scope HTTPS/canonical, giữ query năm và bỏ tracking. Kiểm quyền trước DNS/fetch và sau chờ rate; robots trước discovery và trước mọi redirect. Requests timeout connect/read `(5,20)`, không auto redirect/retry/proxy/netrc; pin IP public đã kiểm nhưng giữ TLS hostname/SNI. Rate theo host >=2s, tôn trọng registry/robots crawl-delay/request-rate. 403/CAPTCHA dừng, 429 lưu retry_not_before theo giây/HTTP-date hoặc 15 phút mặc định; nguồn độc lập vẫn tiếp tục. HTTP header không phân biệt hoa/thường; octet-stream attachment kiểm magic. |
+| T021 | PASS: BeautifulSoup bỏ menu/script, HTML table giữ header trên từng dòng; TXT UTF-8/BOM/NFC; PyMuPDF native theo trang và bảng. Trả pages gồm text/page/section/extraction_kind/numeric_eligible cho index boundary. PDF hỏng/mật khẩu/quá200 trang, bảng số thiếu header và HTML error page có reason, không index nội dung lỗi. Không suy năm từ title/ngày đăng. |
+| T022 | PASS bằng subprocess fake: Tesseract CLI vie+eng/TSV, confidence mean >=90, >=30 ký tự không trắng/trang, timeout <=60s/page và remaining budget <=300s/item. Scan/ảnh fallback; một trang lỗi làm cả tài liệu không được publish. Thiếu binary/tessdata, timeout, confidence thấp có reason/quarantine. Mọi OCR numeric_eligible=false, kể cả đạt gate; không sửa chữ số. |
+| T023 | PASS với indexer spy: raw bytes/context/profile không đổi bỏ extraction và index; raw khác nhưng normalized text/context/profile giống thì index0. Profile đổi xử lý lại; khác context không gộp. Upload UUID/note độc lập, lookup web chỉ origin_kind=web. Origin thay nội dung tách khỏi origins còn dẫn bản cũ. Staging lỗi giữ text/hash/state ready và liên kết cũ, ghi last_update_error; cập nhật/split giữ enabled=false; DISABLED_DUPLICATE không chuyển origin sang document enabled. |
+| T024 | PASS: unit/integration offline dùng SQLite tạm, HTTP/DNS/Tesseract giả lập, BS4/PyMuPDF thật và indexer fake. Kiểm H1 với extraction thật: cùng bytes/URL và nhiều note giữ origin riêng, cùng context dùng chung doc/index0, khác năm tách doc. Kiểm counters 1new/1updated/1skipped/1error, nguồn lỗi/backoff không mất bản tốt, OCR update lỗi, native table/header/page, source revoke lúc chờ rate và coordinator skipped_busy trong lúc extraction chờ Event. |
+
+Fixtures tại `backend/tests/fixtures/utc/`: HTML danh sách/phân trang/thông báo,
+robots.txt, PDF native hai trang, PDF bảng có/thiếu header, PDF scan và PNG. Tất cả
+được tạo offline, ghi nhãn **GIẢ LẬP — KHÔNG PHẢI THÔNG TIN UTC**; script tái tạo
+`tests/fixtures/build_ingestion.py`. Không đưa fixture vào data demo.
+
+Lệnh thực tế từ `backend/`:
+
+```powershell
+uv run --locked --offline pytest -p no:cacheprovider tests/unit/test_crawl.py tests/unit/test_extraction.py tests/unit/test_ingestion.py tests/unit/test_coordinator.py tests/integration/test_utc_ingestion.py -q --tb=short
+uv run --locked --offline pytest -p no:cacheprovider -q --tb=short
+```
+
+Kết quả tập trung: **44 passed in 1.08s** (gồm 3 test coordinator cũ).
+Kết quả hồi quy cuối: **229 passed in 25.16s**, tăng 41 test so với B1.
+`git diff --check`: PASS. Lượt TDD đầu chưa có module nên fail collection như dự kiến.
+Pytest trong sandbox bị chặn thư mục Temp; đã chạy lại ngoài sandbox sau khi được
+cho phép. Ba test integration ban đầu dùng hai monotonic clock khác nhau nên lỗi
+deadline; đã đồng bộ fake clock ở transport/extractor, các lượt cuối đều pass.
+
+`Get-Command tesseract` không tìm thấy executable trong PATH. **Chưa chạy smoke
+Tesseract vie+eng thật**; subprocess/TSV được fake để suite offline. Không tải
+tessdata, model E5 hay gọi Gemini. Không crawl/DNS website thật và không thay đổi
+quyền nguồn thật. Test transport kiểm pinning/TLS configuration, không phải live TLS smoke.
+
+Ứng dụng có extractor thật được inject vào DocumentService nhưng vẫn **không có
+indexer production**: upload mặc định pending/INDEXER_NOT_IMPLEMENTED, không tuyên bố
+đã index/RAG. CrawlService là service gọi tường minh, chưa gắn scheduler hoặc API
+Crawl ngay (tasks sau); không tự chạy ở startup. Pages hiện là đầu ra extraction
+cho boundary indexing; document_chunks/storage/vector/retrieval thuộc T025–T029.
+
+**Dừng sau T024. Checkpoint B2 PASS với fake indexing. T025–T070 còn chưa triển khai.
+Demo/RAG NOT READY. Không commit/push/merge.**
+
+## Bổ sung nghiệm thu T024 — Tesseract thật
+
+Ngày **2026-11-13**, Asia/Ho_Chi_Minh. Bản ghi này cập nhật giới hạn “chưa chạy
+smoke Tesseract thật” ở phần B2 phía trên; không thay kết quả lịch sử.
+
+- Đã kiểm executable Tesseract **v5.5.3.20260724**, Leptonica1.87.0, đủ `eng`, `vie`
+  (máy còn có `osd`). Đã cấu hình đường dẫn đầy đủ executable/tessdata trong
+  `backend/.env` local, file vẫn được Git ignore. Không ghi JWT/key vào báo cáo.
+- `get_settings()` + `probe_ocr()` với cấu hình local thực tế trả **ocr_available=true**.
+- Smoke gọi subprocess Tesseract thật qua `Extractor`, giữ gate confidence>=90,
+  >=30 ký tự không trắng, timeout60s/page và budget300s/item; không đổi ngưỡng.
+- Không truy cập mạng/website thật, không tải dữ liệu hoặc model, không ghi kho demo.
+  Fixtures tiếng Việt được tạo trong RAM bằng Arial trên Windows; Tesseract đọc ảnh
+  tạm local. Indexing/RAG vẫn chưa có production implementation theo phạm vi B2.
+
+Lệnh tái lập từ `backend/`:
+
+```powershell
+uv run --locked --offline python tests/smoke/check_ocr.py --output tests/smoke/ocr-local.json
+```
+
+| Fixture tự tạo | Kết quả | Thông tin thực tế |
+| --- | --- | --- |
+| PDF native tiếng Việt | PASS | native, numeric_eligible=true,108 ký tự không trắng; không gọi OCR |
+| PNG tiếng Việt rõ nét | PASS | OCR thật, confidence mean95,6152;108 ký tự; numeric_eligible=false;0,348s |
+| PDF scan tiếng Việt | PASS | OCR thật, confidence mean95,5295;108 ký tự; numeric_eligible=false;0,352s |
+| PNG trống | PASS | OCR_LOW_QUALITY, quarantined=true, không dùng làm evidence |
+
+**Smoke: 4/4 PASS.** Artifact: `backend/tests/smoke/ocr-local.json`.
+Hồi quy sau khi cấu hình Tesseract thật:
+`uv run --locked --offline pytest -p no:cacheprovider -q --tb=short`
+→ **229 passed in 53.61s**. `git diff --check`: PASS.
+Khẳng định đọc đúng chuỗi tiếng Việt trong PNG/PDF scan được kiểm bằng assertion.
+PNG nhỏ `tests/fixtures/utc/image.png` ở bộ fixture cũ được kiểm thêm và bị
+OCR_LOW_QUALITY; PDF scan cũ đọc được, numeric_eligible=false. Giữ kết quả cách ly
+ảnh chất lượng thấp, không hạ gate để ép ảnh đó đạt.
+
+Lượt smoke đầu trong sandbox bị chặn quyền thư mục Temp; đã được phép chạy lại
+ngoài sandbox và tất cả ca smoke ở trên hoàn tất. Không có extension hook được
+đăng ký (`.specify/extensions.yml` không tồn tại). Checklist giữ nguyên theo lần
+chấp thuận trước; T025 trở đi chưa triển khai. Không commit/push/merge.
