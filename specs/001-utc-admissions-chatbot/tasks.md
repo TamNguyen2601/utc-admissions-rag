@@ -1,7 +1,7 @@
 ﻿# Công việc triển khai — phạm vi local đơn giản
 
-**Trạng thái**: T001–T029 đã triển khai đến checkpoint C; chunks/index/publish/retrieval/source API được kiểm bằng SQLite và fixtures offline, E5 CPU smoke riêng đã PASS. Dừng sau T029; T030 trở đi chưa triển khai, chatbot/demo chưa nghiệm thu.
-**Bằng chứng**: [Kết quả thực tế T001–T029](../../docs/demo/acceptance-results.md).
+**Trạng thái**: T001–T034 đã triển khai đến checkpoint D1; chat Guest/scope/evidence/Gemini adapter/API được kiểm bằng SQLite tạm, encoder xác định được và Gemini stub/SDK MockTransport. E5 CPU smoke riêng đã PASS ở checkpoint C. Dừng sau T034; T035+ và lịch sử chat chưa triển khai, chưa nghiệm thu Gemini live hoặc demo.
+**Bằng chứng**: [Kết quả thực tế T001–T034](../../docs/demo/acceptance-results.md).
 **Số task**: 70. Không yêu cầu giữ số lượng của bản thiết kế trước.
 Căn cứ: [spec](spec.md), [plan](plan.md), [architecture](architecture.md),
 [data model](data-model.md), [REST](contracts/rest-api.md), [testing](testing.md).
@@ -169,27 +169,27 @@ Contract dùng stub không được ghi là integration pass. Tests đi sau ch�
 
 ## 6. Gemini RAG chatbot — checkpoint D1
 
-- [ ] T030 [RAG/scope] [US1] Rules UTC/social/ngoài/hỗn hợp/mơ hồ, message/turn/context validation; inject catalogue resolver, chưa có catalogue thì hỏi lại câu nghề mơ hồ.
+- [X] T030 [RAG/scope] [US1] Rules UTC/social/ngoài/hỗn hợp/mơ hồ, message/turn/context validation; inject catalogue resolver, chưa có catalogue thì hỏi lại câu nghề mơ hồ.
   - File: `backend/app/services/scope.py`.
   - Phụ thuộc: T028; coverage: FR-001 FR-002 FR-003.
   - Nghiệm thu: Unit status expected, không Gemini cho nhánh không cần; không tự coi ngành trường khác là UTC.
 
-- [ ] T031 [RAG/evidence] [US1] Evidence gate context/thiếu/conflict, native quote template, ID/source validation; numeric guard tách literal năm/mã/tên chương trình khỏi giá trị định lượng.
+- [X] T031 [RAG/evidence] [US1] Evidence gate context/thiếu/conflict, native quote template, ID/source validation; numeric guard tách literal năm/mã/tên chương trình khỏi giá trị định lượng.
   - File: `backend/app/services/evidence.py`.
   - Phụ thuộc: T028, T030; coverage: FR-003 FR-004 FR-005.
   - Nghiệm thu: H2: literal đúng vai trò/citedsource được giữ, không blanket chữ số/keyword; giá trị điểm/phí/chỉtiêu/ngày/count trùng mã vẫn bị loại; native đúng context, không parser claim.
 
-- [ ] T032 [RAG/Gemini] [US1] google-genai async SDK/default model, strict answer/evidence_ids, grounding cho phép context literals, attempts1; timeout<=remaining lúc gọi và sanitize error.
+- [X] T032 [RAG/Gemini] [US1] google-genai async SDK/default model, strict answer/evidence_ids, grounding cho phép context literals, attempts1; timeout<=remaining lúc gọi và sanitize error.
   - File: `backend/app/services/gemini.py`.
   - Phụ thuộc: T004, T031; coverage: FR-006 FR-034.
   - Nghiệm thu: Stub429 chỉ1call→503quota; key503/SDKtimeout504/service503 đúng; không fallback/key leak, không reset outer timeout hoặc tự lưu message.
 
-- [ ] T033 [RAG/chat API] [US1] Một async handler với asyncio.timeout_at(expires_at) tổng60s, retrieval CPU to_thread chỉ trả dữ liệu, numeric bypass Gemini; handler kiểm nguồn/session/hạn trước trả Reply và lưu.
+- [X] T033 [RAG/chat API] [US1] Một async handler với asyncio.timeout_at(expires_at) tổng60s, retrieval CPU to_thread chỉ trả dữ liệu, numeric bypass Gemini; handler kiểm nguồn/session/hạn trước trả Reply và lưu.
   - File: `backend/app/services/chat.py`, `backend/app/schemas/chat.py`, `backend/app/api/routes/chat.py`.
   - Phụ thuộc: T006, T030, T031, T032; coverage: FR-001 FR-002 FR-003 FR-004 FR-005 FR-006 FR-029.
   - Nghiệm thu: Reply200/schema đúng, output sai→insufficient; outertimeout504, kết quả CPU/Gemini muộn không finalize/persist; không CPU kill/task registry; Guest không DB/log.
 
-- [ ] T034 [Test/chat] [US1] Test scope/nguồn/JSON/ID/injection, H2 năm/mã/tên cósố hợp lệ và số bịa, quota/key/outertimeout, disable khi Gemini stub chờ.
+- [X] T034 [Test/chat] [US1] Test scope/nguồn/JSON/ID/injection, H2 năm/mã/tên cósố hợp lệ và số bịa, quota/key/outertimeout, disable khi Gemini stub chờ.
   - File: `backend/tests/contract/test_chat.py`, `backend/tests/integration/test_chat.py`.
   - Phụ thuộc: T033; coverage: FR-001 FR-002 FR-003 FR-004 FR-005 FR-006 FR-029 FR-034 SC-001 SC-002.
   - Nghiệm thu: Q09–Q14/H2 pass: literal sourced không bị chặn, số định lượng trùng ID vẫn bị loại; outer504 khác SDK504, attempts1; sốnative có nguồn, không bảo đảm tuyệt đối narrative.

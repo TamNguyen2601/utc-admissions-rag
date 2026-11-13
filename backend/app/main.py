@@ -14,6 +14,8 @@ from app.services.documents import DocumentService
 from app.services.extraction import Extractor
 from app.services.embedding import EmbeddingService, Indexer
 from app.services.retrieval import RetrievalService
+from app.services.gemini import GeminiService
+from app.services.chat import ChatService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -23,6 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         database = None
+        gemini = None
         try:
             try:
                 database = Database(config)
@@ -38,9 +41,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.retrieval = RetrievalService(database, application.state.encoder,
                 application.state.documents._profile(), application.state.knowledge_lock,
                 config.retrieval_min_similarity)
+            gemini = GeminiService(config)
+            application.state.gemini = gemini
+            application.state.chat = ChatService(application.state.retrieval, gemini, config)
             application.state.ocr_available = probe_ocr(config)
             yield
         finally:
+            if gemini is not None:
+                await gemini.close()
             if database is not None:
                 database.dispose()
 

@@ -8,6 +8,7 @@ from app.core.logging import request_id_context
 from app.services.auth import InvalidCredentials
 from app.services.coordinator import RunInProgress
 from app.services.embedding import QueryTooLong
+from app.services.gemini import ChatError
 
 ERRORS = {
     400: ("BAD_REQUEST", "Yêu cầu không hợp lệ."),
@@ -48,6 +49,8 @@ def register_error_handlers(app: FastAPI) -> None:
             code = "RUN_IN_PROGRESS"
         if isinstance(exc, QueryTooLong):
             code = "QUERY_TOO_LONG"
+        if isinstance(exc, ChatError):
+            code = exc.code
         return error_response(exc.status_code, code=code, headers=headers)
 
     @app.exception_handler(RequestValidationError)
