@@ -97,19 +97,38 @@ class RetrievalService:
     def available(self, citation):
         """Recheck a snapshot before reuse; caller must recheck again before final use."""
         with self.publish_lock, self.database.session() as db:
-            doc = db.get(Document, citation.get('document_id'))
-            chunk = db.get(DocumentChunk, citation.get('chunk_id'))
-            if (not self._current(db, doc) or chunk is None or chunk.document_id != doc.id
-                    or citation.get('content_hash') != doc.content_hash):
-                return False
-            try:
-                read_vector(chunk.embedding)
-            except ValueError:
-                return False
-            origins = usable_origins(db, doc.id)
-            return bool(origins) and (not citation.get('url') or any(
-                origin.canonical_url == citation['url']
-                and source.name == citation.get('source_name', source.name) for origin, source in origins))
+            return self.available_in_session(db, citation)
+
+    def available_in_session(self, db, citation):
+        """Caller holds publish_lock: allows atomic final validation without recursive Lock."""
+        doc = db.get(Document, citation.get('document_id'))
+        chunk = db.get(DocumentChunk, citation.get('chunk_id'))
+        if (not self._current(db, doc) or chunk is None or chunk.document_id != doc.id
+                or citation.get('content_hash') != doc.content_hash):
+            return False
+        try:
+            read_vector(chunk.embedding)
+        except ValueError:
+            return False
+        origins = usable_origins(db, doc.id)
+        return bool(origins) and (not citation.get('url') or any(
+            origin.canonical_url == citation['url']
+            and source.name == citation.get('source_name', source.name) for origin, source in origins))
+
+    def has_knowledge(self):
+        """Usable corpus presence, independent of this question's score/context filters."""
+        with self.publish_lock, self.database.session() as db:
+            documents = db.scalars(select(Document).where(Document.enabled.is_(True), Document.state == 'ready'))
+            for doc in documents:
+                if not self._current(db, doc) or not usable_origins(db, doc.id):
+                    continue
+                for chunk in db.scalars(select(DocumentChunk).where(DocumentChunk.document_id == doc.id)):
+                    try:
+                        read_vector(chunk.embedding)
+                        return True
+                    except ValueError:
+                        continue
+            return False
 
     def source(self, identity, page=None):
         with self.publish_lock, self.database.session() as db:

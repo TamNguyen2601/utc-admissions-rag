@@ -601,3 +601,78 @@ vượt budget bị từ chối thay vì cắt mất điều kiện. Cần reind
 
 **T025–T029 đã đánh [X]. Checkpoint C PASS. T030–T070 giữ nguyên chưa triển khai.
 Không Gemini embedding, không dịch vụ vector ngoài, không commit/push/merge.**
+
+## Checkpoint D1 — T030–T034: Gemini RAG chatbot
+
+Ngày **2026-11-13**, Asia/Ho_Chi_Minh. Chỉ triển khai T030–T034; dừng trước
+T035, không tạo bảng/API hay lưu lịch sử hội thoại. Bản ghi này cập nhật trạng
+thái checkpoint C ở trên; giữ nguyên các kết quả trước đó làm bằng chứng lịch sử.
+Checklist requirements 30/35 checked, 5 mục trước demo còn trống; người dùng đã
+xác nhận tiếp tục. Không sửa checklist. Đã đọc Spec Kit/constitution/contracts,
+skill speckit-implement và retrieval hiện hành. Không có `.specify/extensions.yml`
+ở cả bước trước và sau triển khai, không có hook để dispatch. Ignore đã kiểm theo
+stack Python/Node hiện tại; không cần thêm Docker/linter/publish ignore. Không
+thêm dependency hoặc đổi lockfile, không seed hay sửa DB/data thật.
+
+| Task | Kết quả thực tế |
+| --- | --- |
+| T030 | PASS: schema đóng cho message/context/turns; trim/NFC, message 1–4000, tối đa10 turns/4000 mỗi tin/16000 tổng; reject extra/conversation_id, bool/string year và token query quá budget. Scope rules UTC, xã giao, ngoài phạm vi, hỗn hợp và mơ hồ; phần ngoài bị loại khỏi query Gemini. Trường khác không được coi là UTC dù có context. Có catalogue resolver injectable; mặc định chưa có catalogue thì nghề/ngành mơ hồ hỏi lại. Chỉ user turn thiết lập chủ thể, không dùng assistant/history làm evidence. |
+| T031 | PASS: phân biệt kho local trống với kho có nhưng không đủ chứng cứ, kiểm liên quan từ vựng bổ sung cosine, context chính xác và các context chưa rõ, loại đoạn chứa chỉ dẫn injection nhận diện được. Numeric bypass Gemini: trích nguyên văn native/numeric_eligible kèm context, header/đơn vị/điều kiện; không lấy năm/mã làm giá trị đo; nhiều giá trị không xác định dòng thì từ chối, số khác nhau cùng context trả conflicting_sources có citations. OCR không trả số. H2 cho phép năm/mã ngành/tên DEMO2+2 đúng vai trò/cited source; giá trị điểm/phí/chỉ tiêu/ngày/count vẫn bị chặn dù trùng định danh. |
+| T032 | PASS: google-genai async, model gemini-3.5-flash-lite theo Settings; một client lazy ở backend, attempts=1 ở client và mỗi call; không retry429/5xx/timeout, không fallback. System grounding, chỉ gửi query đã scope và evidence hợp lệ với ID request-local; không gửi turns/private notes/URL nguồn cho model. Structured output đóng answer/evidence_ids; timeout SDK tính bằng ms làm tròn xuống từ ngân sách còn lại. Lifecycle đóng client. Lỗi đã sanitize, không raw exception/key. |
+| T033 | PASS: POST /api/v1/chat/guest trả đúng Reply/Citation/context đủ4khóa/request_id. Một asyncio.timeout_at(expires_at), mặc định tổng60s; retrieval CPU qua to_thread chỉ trả dữ liệu. Handler kiểm hạn sau retrieval/model và sau khi lấy khóa finalize; kiểm lại source/hash/chunk/current permissions và session bằng Session mới. Khóa finalize dùng chung với disable/delete/publish, không giữ qua network/CPU/await. Model/CPU muộn không trả200 hoặc tự lưu; không registry/hủy CPU. Guest không INSERT/UPDATE/DELETE; Bearer sai/revoked401, không downgrade Guest. |
+| T034 | PASS D1: thêm127 ca unit/contract/integration/SDK transport xác định được. Có prompt injection, URL/evidence ID giả, JSON/extra/duplicate key/ID sai, missing/out-of-scope, H2 literal sourced và số bịa, native năm/cơ sở/phương thức/dòng/đơn vị/OCR, conflict, disable/delete/update/revoke source trong lúc Gemini chờ, session revoke, quota/key/SDK timeout/outer timeout, CPU muộn và model cố trả sau cancellation, chờ khóa finalize và Guest không ghi DB. Không tuyên bố đã kiểm persistence của T035–T037. |
+
+Các mã lỗi HTTP đã kiểm:
+
+| HTTP | Code | Kiểm thực tế |
+| --- | --- | --- |
+| 503 | GEMINI_CONFIGURATION_ERROR | Thiếu key qua API; SDK MockTransport400/401/403/404, không lộ thông tin upstream |
+| 503 | GEMINI_QUOTA_EXCEEDED | SDK429 đúng1 request; contract error envelope |
+| 503 | GEMINI_SERVICE_UNAVAILABLE | SDK500/503 và network error đúng1 request; contract error envelope |
+| 504 | GEMINI_TIMEOUT | SDK httpx.ReadTimeout/504 đúng1 request, timeout riêng trước outer |
+| 504 | REQUEST_DEADLINE_EXCEEDED | Budget hết khi CPU/model/finalize chờ; explicit final check chặn model trả sau cancellation |
+| 422 | QUERY_TOO_LONG | Query E5 vượt512 token gồm prefix/special, không truncate |
+
+Lệnh và kết quả cuối, trên dependencies đã lock:
+
+```powershell
+# backend/
+uv run --locked --offline pytest -q --tb=short
+# frontend/
+npm run build
+# repository root
+git diff --check
+```
+
+- Backend: **381 passed in 30.25s** =254 ca cũ +127 ca mới. Bao gồm toàn bộ
+  tests/unit, contract, integration và smoke/test_setup.py có SDK transport test;
+  offline mặc định, SQLite/temp storage và encoder giả lập cách ly hoàn toàn data thật.
+- Frontend: **PASS**, TypeScript + Vite7.3.8; 40 modules, build743ms sau tsc.
+  Frontend hiện không có script test riêng; không triển khai UI chat của T055.
+- `git diff --check`: PASS.
+- TDD đầu fail collection vì chưa có app.schemas.chat, đúng trạng thái trước triển khai.
+  Lượt đầu127ca thiết kế dần có2 lỗi: scope thiếu từ khóa công nghệ thông tin và
+  fixture nhiều năm dùng cùng URL làm origin chuyển bản. Đã sửa rules/fixture,
+  bổ sung guard/dòng native, các lượt cuối đều PASS. uv cache bị sandbox từ chối;
+  Vite/esbuild spawn EPERM trong sandbox; đã chạy lại test/build bằng quyền được cấp.
+
+Nguồn kỹ thuật SDK đã đối chiếu với bản lock và
+[tài liệu chính thức google-genai](https://googleapis.github.io/python-genai/)
+về structured output, HttpOptions và retry. Unit dùng **SDK thật + HTTP giả lập**;
+integration dùng **ingestion/chunking/SQLite/retrieval/chat thật + encoder/Gemini giả lập**.
+Không gọi Gemini live hoặc nạp key thật; chưa nghiệm thu quyền truy cập model bằng
+key người dùng, narrative live, bộ30câu/golden review T064 hoặc latency10câu chat T065.
+Không chạy lại smoke E5/OCR riêng; bằng chứng checkpoint C/B2 vẫn ở các mục trước.
+
+Giới hạn: scope/overlap/injection/numeric rules bảo thủ, không là semantic claim parser
+hay bảo đảm mọi diễn giải đều đúng; vẫn cần đọc nguồn/golden review. Tên/identifier
+chỉ chấp nhận khi khớp cited evidence. Đường native từ chối khi không nhận diện được
+giá trị/đơn vị/context/dòng, không tự đoán. COUNT việc làm chưa có service T038+ nên
+không sinh số tin từ Gemini. Catalogue chưa có nên không tự tạo ngành/nghề liên quan.
+Timeout có thể có overhead nhỏ của điều phối/DB kiểm cuối đồng bộ, không SLA thời gian
+thực; kiểm hạn cuối không cho phép kết quả hết hạn thành200. Lịch sử/account persistence,
+owner/conversation busy và atomic message pair dành cho T035–T037, chưa triển khai.
+
+**T030–T034 đã đánh [X], checkpoint D1 PASS offline. T035–T070 giữ nguyên chưa làm.
+Không tạo dữ liệu tuyển sinh cho database thật; không commit/push/merge. Demo SC-010
+chưa đạt và Gemini live chưa nghiệm thu.**
